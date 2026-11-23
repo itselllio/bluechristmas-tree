@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Merry Christmas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one full-bleed canvas scene; a quiet title top-left and a bracketed ASCII control row at the bottom. Single dark look by choice. */
+:root {
+  --night: #070b16;
+  --frost: #dbe8ff;
+  --velvet: #8ec2f5;
+  --dim: #6f83a8;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--night); color: var(--frost); font-family: var(--mono); overflow: hidden; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+canvas:active { cursor: grabbing; }
+.title {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 4px; pointer-events: none;
+}
+.title b { font-weight: 600; font-size: 13px; letter-spacing: 0.32em; color: var(--velvet); }
+.title span { font-size: 11px; color: var(--dim); letter-spacing: 0.06em; }
+.bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+.bar button { font: 12px/1 var(--mono); color: var(--velvet); background: none; border: 0; padding: 8px 0; cursor: pointer; white-space: nowrap; }
+.bar button:hover { color: var(--frost); }
+.bar button:focus-visible { outline: 1px dashed var(--velvet); outline-offset: 2px; }
+.hint { font-size: 11px; color: var(--dim); pointer-events: none; }
+@media (max-width: 520px) { .hint { display: none; } }
+</style>
+<style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+
+<canvas id="c" aria-label="An ASCII Christmas tree with blue velvet bows, silver and blue baubles, gold ribbon loops, warm lights, wrapped gifts, a rocking horse and falling snow"></canvas>
+<div class="title"><b>MERRY CHRISTMAS</b></div>
+<div class="bar">
+  <button id="replay">[ replay ]</button>
+  <span class="hint">drag to turn</span>
+</div>
+
+<script>
+(() => {
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU = Math.PI * 2;
+const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+const FAM = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
+
+/* ---------- palettes ---------- */
+function ramp(c0, c1, n) {
+  const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const a = p(c0), b = p(c1), out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    out.push(`rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * t)).join(',')})`);
+  }
+  return out;
+}
+const theme = { needle: ramp('#0d2117', '#7fab7c', 10), bow: '#a6d0fb', bowTail: '#79aee6' };
+const BASKET = ramp('#3a2a1a', '#c9a57a', 6);
+const STRIPE_B = ramp('#244a72', '#9cc7ee', 5);
+const STRIPE_W = ramp('#55606e', '#eef3fa', 5);
+const TOILE_W = ramp('#5a6270', '#f2f4f2', 5);
+const TOILE_INK = ramp('#2c4a6e', '#7fa3cc', 5);
+const RIBBON = ramp('#6b5f4c', '#f1e4c6', 5);
+const VELVET_BOX = ramp('#1a3354', '#5d8fc4', 5);
+const OAK = ramp('#5c3c1e', '#f0cf98', 6);
+const GOLD = ramp('#b47a1e', '#ffe27a', 6);
+const SILVER = ramp('#3e454e', '#ffffff', 9);
+const SPH_CH = '.:-=+*#%@';
+const BAUBLE = {
+  silver: ramp('#3c434d', '#ffffff', 7),
+  gold:   ramp('#5e3f12', '#fff0b8', 7),
+};
+const BALL_ROWS = [[-1, -1, 1], [0, -2, 2], [1, -1, 1]];
+const NEEDLE_CH = '.,:;=+*#%@';
+const SHADE_CH = '.:-=+*#%';
+
+/* ---------- scene geometry (world units; tree height = 1) ---------- */
+const FLOOR = -0.19, TIERS = 7, R0 = 0.56;
+const envR = y => R0 * (1 - y * 0.97) * (1 - 0.3 * ((y * TIERS) % 1));
+const L = (() => { const v = [-0.55, 0.55, 0.65], m = Math.hypot(...v); return v.map(x => x / m); })();
+const onTree = (y, a, k) => { const r = envR(y) * k; return { x: Math.cos(a) * r, y, z: Math.sin(a) * r, a }; };
+
+const needles = [];
+for (let i = 0; i < 16000; i++) {
+  const y = 1 - Math.sqrt(Math.random());
+  const a = rnd(TAU);
+  const inner = Math.random() < 0.8 ? 1 - rnd(0.09) : rnd(0.35, 0.85);
+  const r = envR(y) * inner;
+  const nm = Math.hypot(1, 0.5);
+  needles.push({ x: Math.cos(a) * r, y, z: Math.sin(a) * r, nx: Math.cos(a) / nm, ny: 0.5 / nm, nz: Math.sin(a) / nm, k: rnd(), inner });
+}
+
+/* ornaments: velvet bows, silver mercury balls, small blue balls */
+const orns = [];
+const NB = 20;
+for (let k = 0; k < NB; k++) {
+  const y = 0.08 + 0.82 * (k + 0.5) / NB + rnd(-0.015, 0.015);
+  orns.push({ ...onTree(y, k * 2.39996 + rnd(-0.2, 0.2), 1.03), type: 'bow', tail: 2 + Math.floor(rnd(3)), ph: rnd(TAU) });
+}
+const NBALL = 14;
+for (let k = 0; k < NBALL; k++) {
+  const u = (k + 0.5) / NBALL;
+  const y = 0.07 + 0.8 * (1 - Math.sqrt(1 - u * 0.96));
+  orns.push({ ...onTree(y, k * 2.39996 + 1.2, 1.02), type: 'silver', mat: k % 2 ? 'gold' : 'silver', ph: rnd(TAU) });
+}
+for (let k = 0; k < 34; k++) {
+  const y = 0.04 + 0.86 * (1 - Math.sqrt(rnd()));
+  orns.push({ ...onTree(y, rnd(TAU), 1.02), type: 'blue', ph: rnd(TAU) });
+}
+orns.sort((a, b) => b.z - a.z);
+
+/* gold ribbon: separate draped loops, one per tier, each sweeping round as the tree reaches it */
+const garland = [];
+const LOOPS = 6;
+for (let k = 0; k < LOOPS; k++) {
+  const yk = (k + 0.14) / TIERS;
+  const R = R0 * (1 - yk * 0.97) * (1 - 0.3 * 0.14) * 1.07;
+  const beads = Math.round(420 * R);
+  const swags = 6;
+  for (let i = 0; i < beads; i++) {
+    const s = i / beads, a = k * 1.1 + s * TAU;
+    const f = (s * swags) % 1;
+    const y = yk + 0.012 - 0.028 * Math.sin(f * Math.PI);
+    garland.push({ x: Math.cos(a) * R, y, z: Math.sin(a) * R, nx: Math.cos(a), nz: Math.sin(a), s, k, yk, i, ph: rnd(TAU) });
+  }
+}
+
+const lights = [];
+for (let i = 0; i < 260; i++) {
+  const y = 0.02 + 0.92 * (1 - Math.sqrt(Math.random()));
+  lights.push({ ...onTree(y, rnd(TAU), rnd(0.96, 1.04)), ph: rnd(TAU), sp: rnd(0.8, 2.6) });
+}
+
+const basket = [];
+for (let yi = 0; yi < 11; yi++) {
+  for (let ai = 0; ai < 120; ai++) {
+    const a = ai / 120 * TAU, t = yi / 10;
+    const y = FLOOR + t * 0.2, r = 0.15 + 0.035 * t;
+    const ch = yi === 10 ? '=' : ((ai + yi) % 2 ? '/' : '\\');
+    basket.push({ x: Math.cos(a) * r, y, z: Math.sin(a) * r, nx: Math.cos(a), ny: 0, nz: Math.sin(a), ch });
+  }
+}
+
+/* presents, after the reference wraps */
+const CRINKLE = ramp('#16304f', '#7397c2', 5);
+const SILVER_RIB = ramp('#5d646d', '#eef2f6', 5);
+const TICK_NAVY = ramp('#141c33', '#4a5c8c', 5);
+const TICK_W = ramp('#5c5f66', '#eceae4', 5);
+const NAVY_RIB = ramp('#0b1226', '#33467a', 5);
+const BLUE_RIB = ramp('#1f3d66', '#9cc7f2', 5);
+const WHITE_RIB = ramp('#6a7280', '#f6f8fb', 5);
+const STYLES = {
+  toile:   { rib: BLUE_RIB, bow: BLUE_RIB,
+             skin: () => Math.random() < 0.16 ? [TOILE_INK, Math.random() < 0.7 ? '^' : '*'] : [TOILE_W] },
+  crinkle: { rib: SILVER_RIB, bow: SILVER_RIB, fish: true,
+             skin: () => [CRINKLE, null, rnd(-0.25, 0.25)] },
+  ticking: { rib: NAVY_RIB, bow: NAVY_RIB, card: true,
+             skin: (u, v, nx) => [Math.floor((nx ? v : u) * 18) % 2 ? TICK_NAVY : TICK_W, '|'] },
+  stripe:  { rib: WHITE_RIB, bow: WHITE_RIB,
+             skin: (u, v, nx) => [Math.floor((nx ? v : u) * 10) % 2 ? STRIPE_B : STRIPE_W] },
+  velvet:  { rib: SILVER_RIB, bow: SILVER_RIB,
+             skin: () => [VELVET_BOX, null, rnd(-0.08, 0.08)] },
+};
+const gifts = [];
+let giftN = 0;
+function addGift(cx, cz, w, h, d, rot, style, y0 = 0) {
+  const c = Math.cos(rot), s = Math.sin(rot), st8 = STYLES[style], gi = giftN++;
+  const put = (lx, ly, lz, nx, ny, nz) => {
+    const u = lx / w + 0.5, v = lz / d + 0.5;
+    const onU = Math.abs(u - 0.5) < 0.085, onV = Math.abs(v - 0.5) < 0.085;
+    const e = 0.012;
+    const edge = ny ? (Math.abs(lx) > w / 2 - e || Math.abs(lz) > d / 2 - e)
+      : (ly > h - e || ly < e || (nx ? Math.abs(lz) > d / 2 - e : Math.abs(lx) > w / 2 - e));
+    const ribbon = ny ? (onU || onV) : nx ? onV : onU;
+    let pal, ch = null, jit = 0;
+    if (ribbon) { pal = st8.rib; ch = ny ? '#' : '|'; }
+    else [pal, ch = null, jit = 0] = st8.skin(u, v, nx);
+    if (edge && !ribbon) { jit -= ny ? -0.25 : 0.3; ch = ny ? '_' : (ly > h - e ? '=' : ch); }
+    gifts.push({ gi, x: cx + lx * c - lz * s, y: FLOOR + y0 + ly, z: cz + lx * s + lz * c, nx: nx * c - nz * s, ny, nz: nx * s + nz * c, pal, ch, jit });
+  };
+  const st = 0.011;
+  for (let a = -w / 2; a <= w / 2; a += st) for (let b = -d / 2; b <= d / 2; b += st) put(a, h, b, 0, 1, 0);
+  for (let a = -w / 2; a <= w / 2; a += st) for (let y = 0; y <= h; y += st) { put(a, y, d / 2, 0, 0, 1); put(a, y, -d / 2, 0, 0, -1); }
+  for (let b = -d / 2; b <= d / 2; b += st) for (let y = 0; y <= h; y += st) { put(w / 2, y, b, 1, 0, 0); put(-w / 2, y, b, -1, 0, 0); }
+  gifts.push({ gi, x: cx, y: FLOOR + y0 + h + 0.02, z: cz, bowTop: st8.bow, fish: st8.fish, card: st8.card });
+}
+addGift(0.40, -0.30, 0.24, 0.16, 0.2, 0.6, 'toile');
+addGift(-0.42, -0.26, 0.23, 0.09, 0.2, -0.5, 'ticking');
+addGift(-0.42, -0.26, 0.15, 0.08, 0.13, -0.4, 'ticking', 0.09);
+addGift(-0.52, 0.2, 0.17, 0.12, 0.17, 0.3, 'stripe');
+addGift(-0.52, 0.2, 0.13, 0.1, 0.13, 0.5, 'stripe', 0.12);
+addGift(0.1, -0.56, 0.17, 0.12, 0.16, 0.2, 'crinkle');
+addGift(-0.24, 0.68, 0.17, 0.1, 0.14, -0.2, 'velvet');
+addGift(0.64, 0.02, 0.14, 0.1, 0.13, 1.1, 'crinkle');
+
+/* ---------- soft props made of ellipsoid point clouds ---------- */
+function gauss() { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * Math.random()); }
+function ellip(out, { c, r, rz = 0, n, pal, ch, S = 1, color }) {
+  const cz = Math.cos(rz), sz = Math.sin(rz);
+  for (let i = 0; i < n; i++) {
+    let dx = gauss(), dy = gauss(), dz = gauss();
+    const m = Math.hypot(dx, dy, dz); dx /= m; dy /= m; dz /= m;
+    const x = r[0] * dx, y = r[1] * dy, z = r[2] * dz;
+    let nx = dx / r[0], ny = dy / r[1], nz = dz / r[2];
+    const nm = Math.hypot(nx, ny, nz); nx /= nm; ny /= nm; nz /= nm;
+    const X = x * cz - y * sz, Y = x * sz + y * cz;
+    const NX = nx * cz - ny * sz, NY = nx * sz + ny * cz;
+    const p = { x: (c[0] + X) * S, y: (c[1] + Y) * S, z: (c[2] + z) * S, nx: NX, ny: NY, nz, pal, ch };
+    if (color) p.pal = color(X, Y, z);
+    out.push(p);
+  }
+}
+
+/* wooden rocking horse: light oak, side boards, curved rockers */
+const horse = [];
+{
+  const S = 2.1, O = OAK;
+  ellip(horse, { S, c: [-0.005, 0.072, 0], r: [0.066, 0.028, 0.02], n: 500, pal: O });
+  ellip(horse, { S, c: [-0.012, 0.096, 0], r: [0.05, 0.006, 0.036], n: 300, pal: O });
+  ellip(horse, { S, c: [0.046, 0.038, 0], r: [0.012, 0.034, 0.018], rz: -0.25, n: 170, pal: O });
+  ellip(horse, { S, c: [-0.052, 0.038, 0], r: [0.012, 0.034, 0.018], rz: 0.3, n: 170, pal: O });
+  ellip(horse, { S, c: [0.056, 0.118, 0], r: [0.018, 0.048, 0.016], rz: -0.35, n: 280, pal: O });
+  ellip(horse, { S, c: [0.088, 0.152, 0], r: [0.034, 0.018, 0.015], rz: -0.55, n: 240, pal: O });
+  ellip(horse, { S, c: [0.072, 0.156, 0], r: [0.004, 0.004, 0.036], n: 60, pal: O });
+  ellip(horse, { S, c: [-0.074, 0.1, 0], r: [0.01, 0.03, 0.008], rz: 0.55, n: 90, pal: O });
+  for (let i = 0; i < 40; i++) {
+    const s = i / 39;
+    horse.push({ x: (0.052 - s * 0.03) * S, y: (0.165 - s * 0.085) * S, z: 0, nx: -0.6, ny: 0.8, nz: 0, ch: i % 2 ? '|' : ':', pal: OAK[2], bias: 0.005 });
+  }
+  for (const zs of [-0.034, 0.034]) {
+    for (let i = 0; i < 260; i++) {
+      const x = rnd(-0.14, 0.14), y = 0.006 + 1.15 * x * x + rnd(0.012), z = zs + rnd(-0.007, 0.007);
+      horse.push({ x: x * S, y: y * S, z: z * S, nx: 0, ny: 1, nz: Math.sign(zs) * 0.6, pal: O });
+    }
+  }
+  for (const zs of [-1, 1]) horse.push({ x: 0.098 * S, y: 0.158 * S, z: zs * 0.017 * S, nx: 0, ny: 0, nz: zs, ch: '.', pal: '#2a1a0c', bias: 0.01 });
+}
+
+const faceOut = (x, z) => Math.atan2(z, x) - Math.PI / 2;
+const props = [
+  { pts: horse, x: 0.58, z: 0.5, yaw: faceOut(0.58, 0.5), rock: { pivot: [0, 0.75], amp: 0.11, sp: 1.7 } },
+];
+
+/* floor: a ring of ribbon text */
+const RING_TXT = 'MERRY CHRISTMAS . NOEL . ';
+const RING_N = 128, RING_R = 0.98;
+const ring = [];
+for (let i = 0; i < RING_N; i++) {
+  const a = -i / RING_N * TAU;
+  ring.push({ x: Math.cos(a) * RING_R, y: FLOOR, z: Math.sin(a) * RING_R, ch: RING_TXT[i % RING_TXT.length], i });
+}
+const ground = [];
+for (let i = 0; i < 1100; i++) {
+  const a = rnd(TAU), r = 1.15 * Math.sqrt(Math.random());
+  ground.push({ x: Math.cos(a) * r, y: FLOOR, z: Math.sin(a) * r, r });
+}
+
+/* ---------- viewport / grid ---------- */
+let W, H, dpr, fs, cw, ch, cols, rows, scale, cx, baseY;
+let zb, cb, colb, fillb;
+function resize() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cvs.width = W * dpr; cvs.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fs = clamp(Math.min(W / 120, H / 62), 7.5, 12.5);
+  ctx.font = `${fs}px ${FAM}`;
+  cw = ctx.measureText('M').width; ch = fs * 1.1;
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  scale = Math.min(H * 0.42, W * 0.92 / 2.45);
+  cx = W / 2; baseY = H * 0.65;
+  zb = new Float32Array(cols * rows);
+  cb = new Array(cols * rows);
+  colb = new Array(cols * rows);
+  fillb = new Array(cols * rows);
+  makeSnow();
+}
+
+let theta = 0.6, spin = reduce ? 0 : 0.18, dragV = 0;
+const PITCH = 0.32, cp = Math.cos(PITCH), sp = Math.sin(PITCH), CAM = 4.2;
+let c0 = 1, s0 = 0;
+const P = { col: 0, row: 0, depth: 0, px: 0, py: 0 };
+function project(x, y, z) {
+  const xr = x * c0 + z * s0;
+  const zr = -x * s0 + z * c0;
+  const ys = y * cp - zr * sp;
+  const depth = zr * cp + y * sp;
+  const k = CAM / (CAM - depth);
+  P.px = cx + xr * scale * k;
+  P.py = baseY - ys * scale * k;
+  P.col = Math.floor(P.px / cw); P.row = Math.floor(P.py / ch); P.depth = depth;
+  return P.col >= 0 && P.row >= 0 && P.col < cols && P.row < rows;
+}
+const viewNZ = (nx, nz) => -nx * s0 + nz * c0;
+function shade(nx, ny, nz) {
+  const xr = nx * c0 + nz * s0, zr = -nx * s0 + nz * c0;
+  const yv = ny * cp - zr * sp, zv = zr * cp + ny * sp;
+  return Math.max(0, xr * L[0] + yv * L[1] + zv * L[2]);
+}
+/* fill: paint the whole cell behind the glyph, so solid objects read as blocks, not loose letters */
+function plot(col, row, depth, c, color, force, fill) {
+  if (col < 0 || row < 0 || col >= cols || row >= rows) return;
+  const i = row * cols + col;
+  if (force || depth > zb[i]) { zb[i] = depth; cb[i] = c; colb[i] = color; fillb[i] = fill; }
+}
+
+/* ---------- snow ---------- */
+let snow = [], heavy = true;
+function makeSnow() {
+  const n = Math.round(W * H / (heavy ? 3200 : 7500) * (reduce ? 0.5 : 1));
+  snow = Array.from({ length: n }, () => newFlake(true));
+}
+function newFlake(anyY) {
+  const near = Math.random() < 0.15;
+  return {
+    x: rnd(W), y: anyY ? rnd(H) : -10,
+    vy: (near ? rnd(26, 40) : rnd(10, 24)) * (reduce ? 0.4 : 1),
+    amp: rnd(4, 14), ph: rnd(TAU), f: rnd(0.4, 1.2),
+    c: near ? (Math.random() < 0.5 ? '*' : '+') : (Math.random() < 0.85 ? '.' : "'"),
+    a: near ? rnd(0.55, 0.85) : rnd(0.25, 0.6),
+  };
+}
+
+function glowSprite(rgb) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, `rgba(${rgb},0.55)`);
+  gr.addColorStop(0.35, `rgba(${rgb},0.16)`);
+  gr.addColorStop(1, `rgba(${rgb},0)`);
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return c;
+}
+const glow = glowSprite('255,205,140');
+const glowCool = glowSprite('190,215,255');
+const glowGold = glowSprite('255,190,70');
+const glowSilver = glowSprite('215,228,245');
+
+/* ---------- frame ---------- */
+const G0 = 1.2, GD = 8.5, GEND = G0 + GD;
+let t0 = null, last = performance.now(), jingleAt = -1e9;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (t0 === null) t0 = now;
+  const t = (now - t0) / 1000;
+  const tt = now / 1000;
+  const jing = Math.exp(-(now - jingleAt) / 1000 * 2.2);
+  if (!dragging) { theta += (spin + dragV) * dt; dragV *= Math.pow(0.08, dt); }
+  c0 = Math.cos(theta); s0 = Math.sin(theta);
+
+  zb.fill(-1e9); cb.fill(undefined); fillb.fill(undefined);
+
+  const gp = clamp((t - G0) / GD, 0, 1);
+  const grow = 0.5 - 0.5 * Math.cos(Math.PI * gp);
+  const ringT = ease(t / 1.4);
+  const gy = FLOOR + grow * (1.04 - FLOOR);
+
+  // ground snow + ribbon ring
+  for (const g of ground) {
+    if (g.r > ringT * 1.15) continue;
+    if (!project(g.x, g.y, g.z)) continue;
+    const b = 1 - g.r;
+    plot(P.col, P.row, P.depth - 2, b > 0.55 ? ':' : '.', `rgba(180,205,240,${(0.1 + b * 0.28).toFixed(2)})`);
+  }
+  for (const r of ring) {
+    if (r.i / RING_N > ringT) continue;
+    if (!project(r.x, r.y, r.z)) continue;
+    const front = 0.5 + 0.5 * (P.depth / RING_R);
+    plot(P.col, P.row, P.depth - 1, r.ch, `rgba(150,195,245,${(0.25 + front * 0.5).toFixed(2)})`);
+  }
+
+  // basket
+  for (const p of basket) {
+    if (p.y > gy) continue;
+    if (!project(p.x, p.y, p.z)) continue;
+    if (viewNZ(p.nx, p.nz) < -0.05) continue;
+    const b = 0.2 + 0.8 * shade(p.nx, p.ny, p.nz);
+    plot(P.col, P.row, P.depth, p.ch, BASKET[Math.min(5, Math.floor(b * 6))]);
+  }
+
+  // needles, growing up from the basket
+  for (const n of needles) {
+    if (n.y > gy) continue;
+    const front = clamp((gy - n.y) / 0.08, 0, 1);
+    const sx = 0.35 + 0.65 * front;
+    if (!project(n.x * sx, n.y, n.z * sx)) continue;
+    let b = 0.12 + 0.7 * shade(n.nx, n.ny, n.nz) + (n.k - 0.5) * 0.35;
+    b *= n.inner > 0.9 ? 1 : 0.55;
+    b = clamp(b, 0, 0.999);
+    plot(P.col, P.row, P.depth, NEEDLE_CH[Math.floor(b * 10)], theme.needle[Math.floor(b * 10)]);
+  }
+
+  // gold bead garland: each loop sweeps round as the tree reaches it, beads twinkle and glow
+  const glows = [], cool = [], discs = [];
+  for (const g of garland) {
+    const prog = clamp((gy - g.yk - 0.03) / 0.08, 0, 1);
+    if (g.s > ease(prog)) continue;
+    const facing = viewNZ(g.nx, g.nz);
+    if (facing < -0.05) continue;
+    if (!project(g.x, g.y, g.z)) continue;
+    const tw = 0.5 + 0.5 * Math.sin(tt * 2 - g.s * 18 + g.k);
+    const b = clamp(0.5 + 0.3 * facing + 0.2 * tw + jing * 0.4, 0, 0.999);
+    const c = jing > 0.3 && tw > 0.7 ? '*' : g.i % 3 === 0 ? 'o' : '=';
+    plot(P.col, P.row, P.depth + 0.03, c, GOLD[Math.floor(b * 6)], true, '#8a6418');
+    if (g.i % 6 === 0 && facing > 0.3 && tw > 0.6) glows.push(P.px, P.py, 0.6 + tw * 0.12);
+  }
+
+  // presents
+  const drop = [];
+  for (let gi = 0; gi < giftN; gi++) {
+    const ts = GEND - 0.6 + gi * 0.55, u = (t - ts) / 0.75;
+    if (u < 0) { drop.push(null); continue; }
+    if (u < 1) { drop.push(1.9 * (1 - u * u)); continue; }
+    const q = (t - ts - 0.75) / 0.3;
+    drop.push(q < 1 ? 0.035 * Math.sin(q * Math.PI) : 0);
+  }
+  for (const g of gifts) {
+    const off = drop[g.gi];
+    if (off === null) continue;
+    const gy2 = g.y + off;
+    if (g.bowTop) {
+      if (!project(g.x, gy2, g.z)) continue;
+      const { col, row, depth } = P;
+      const B = g.bowTop, dz = depth + 0.05;
+      if (g.card) { for (let c = -3; c <= -1; c++) plot(col + c, row + 1, dz - 0.01, '=', '#ece6d6'); }
+      [[-2, -1, '('], [-1, -1, '\\'], [1, -1, '/'], [2, -1, ')'],
+       [-2, 0, '\\'], [-1, 0, '_'], [0, 0, 'o'], [1, 0, '_'], [2, 0, '/'],
+       [-1, 1, '/'], [1, 1, '\\']].forEach(([dc, dr, c]) => plot(col + dc, row + dr, dz, c, c === 'o' ? B[4] : B[3]));
+      if (g.fish) ['<', '>', '<', '>', '<'].forEach((c, i) => plot(col + 1 + i, row - 2, dz + 0.01, i === 2 ? '@' : c, i === 2 ? '#7f9cc4' : '#e3d6bb'));
+      continue;
+    }
+    if (!project(g.x, gy2, g.z)) continue;
+    if (g.ny === 0 && viewNZ(g.nx, g.nz) < 0) continue;
+    const b = clamp(0.25 + 0.75 * shade(g.nx, g.ny, g.nz) + g.jit, 0, 0.999);
+    const pal = typeof g.pal === 'string' ? [g.pal, g.pal, g.pal, g.pal, g.pal] : g.pal;
+    const fc = pal[Math.floor(b * 5)];
+    plot(P.col, P.row, P.depth, g.ch || SHADE_CH[Math.floor(b * 8)], fc, false, pal[Math.max(0, Math.floor(b * 5) - 1)]);
+  }
+
+  // rocking horse
+  const propIn = ease((t - GEND + 0.8) / 1.0);
+  if (propIn > 0) for (const pr of props) {
+    const cY = Math.cos(pr.yaw), sY = Math.sin(pr.yaw);
+    let ca = 1, sa = 0, px0 = 0, py0 = 0, lift = 0;
+    if (pr.rock) {
+      const ang = Math.sin(tt * pr.rock.sp) * (reduce ? 0.03 : pr.rock.amp + jing * 0.12);
+      ca = Math.cos(ang); sa = Math.sin(ang); [px0, py0] = pr.rock.pivot;
+    }
+    if (pr.hop) lift = Math.abs(Math.sin(tt * 9)) * jing * 0.05;
+    for (const p of pr.pts) {
+      let lx = p.x, ly = p.y, nx = p.nx, ny = p.ny;
+      if (pr.rock) {
+        const dx = lx - px0, dy = ly - py0;
+        lx = px0 + dx * ca - dy * sa; ly = py0 + dx * sa + dy * ca;
+        const n2 = nx * ca - ny * sa; ny = nx * sa + ny * ca; nx = n2;
+      }
+      const wx = pr.x + lx * cY - p.z * sY, wz = pr.z + lx * sY + p.z * cY;
+      if (!project(wx, FLOOR + (ly + lift) * propIn, wz)) continue;
+      if (p.ch) { plot(P.col, P.row, P.depth + (p.bias || 0), p.ch, p.pal); continue; }
+      const wnx = nx * cY - p.nz * sY, wnz = nx * sY + p.nz * cY;
+      const b = clamp(0.22 + 0.78 * shade(wnx, ny, wnz), 0, 0.999);
+      plot(P.col, P.row, P.depth, SHADE_CH[Math.floor(b * 8)], p.pal[Math.floor(b * p.pal.length)]);
+    }
+  }
+
+  // fairy lights
+  const lightIn = clamp((t - G0 - 1) / 1.5, 0, 1);
+  if (lightIn > 0) for (const l of lights) {
+    if (l.y > gy) continue;
+    if (!project(l.x, l.y, l.z)) continue;
+    const i = P.row * cols + P.col;
+    if (P.depth < zb[i] - 0.03) continue;
+    const tw = Math.min(1, (0.55 + 0.45 * Math.sin(tt * l.sp + l.ph)) * lightIn + jing * 0.8);
+    if (tw < 0.15) continue;
+    const c = tw > 0.82 ? '*' : tw > 0.5 ? 'o' : '.';
+    plot(P.col, P.row, P.depth + 0.01, c, `rgba(255,${Math.round(214 + tw * 30)},${Math.round(150 + tw * 60)},${(0.35 + tw * 0.65).toFixed(2)})`, true);
+    if (tw > 0.6) glows.push(P.px, P.py, tw);
+  }
+
+  // ornaments pop in as the growth front passes them
+  for (let k = 0; k < orns.length; k++) {
+    const o = orns[k];
+    const age = gy - o.y;
+    if (age < 0.015) continue;
+    const nz = viewNZ(Math.cos(o.a), Math.sin(o.a));
+    if (nz < 0.1) continue;
+    if (!project(o.x, o.y, o.z)) continue;
+    const wob = Math.round(Math.sin(tt * 22 + o.ph) * jing * 1.6);
+    const col = P.col + wob, row = P.row, depth = P.depth + 0.02;
+    const put = (dc, dr, c, color, fill) => plot(col + dc, row + dr, depth, c, color, true, fill);
+    if (age < 0.05) { put(0, 0, '.', o.type === 'bow' ? theme.bow : o.type === 'silver' ? '#dfe6ee' : '#8cc3ff'); continue; }
+    if (o.type === 'bow') {
+      put(-1, 0, '>', theme.bow); put(0, 0, 'o', '#e2f0ff'); put(1, 0, '<', theme.bow);
+      const tailLen = Math.min(o.tail, Math.floor((age - 0.05) * 60));
+      for (let r = 1; r <= tailLen; r++) {
+        const off = r > 2 ? 1 : 0;
+        put(-1 - off, r, r === 1 ? '/' : (r % 2 ? ')' : '('), theme.bowTail);
+        put(1 + off, r, r === 1 ? '\\' : (r % 2 ? '(' : ')'), theme.bowTail);
+      }
+    } else if (o.type === 'silver') {
+      // a dense glyph cluster with a soft coloured glow behind it
+      const pal = BAUBLE[o.mat], tw = 0.5 + 0.5 * Math.sin(tt * 1.2 + o.ph);
+      const BALL = [[-1, -1, '%', 4], [0, -1, '%', 5], [1, -1, '*', 4],
+                    [-2, 0, '%', 3], [-1, 0, '@', 6], [0, 0, '@', 6], [1, 0, '@', 5], [2, 0, '%', 3],
+                    [-1, 1, '*', 3], [0, 1, '%', 4], [1, 1, '%', 3]];
+      for (const [dc, dr, c, i] of BALL) put(dc, dr, c, pal[i], 'disc');
+      for (const [dc, dr] of [[-2, -1], [2, -1], [-2, 1], [2, 1]]) put(dc, dr, ' ', pal[0], 'disc');
+      discs.push((col + 0.5) * cw, (row + 0.5) * ch, 0.65 + 0.25 * tw, o.mat === 'gold' ? 1 : 0);
+    } else {
+      put(0, 0, 'O', nz > 0.6 ? '#9ccbff' : '#5f97d8');
+    }
+  }
+
+  // star
+  const starIn = ease((t - GEND + 0.2) / 0.9);
+  let starPx = null;
+  if (starIn > 0 && project(0, 1.06, 0)) {
+    const { col, row } = P; starPx = [P.px, P.py];
+    const pulse = Math.min(1, 0.75 + 0.25 * Math.sin(tt * 2.2) + jing);
+    const gold = `rgba(255,226,160,${(starIn * pulse).toFixed(2)})`;
+    const pale = `rgba(255,240,205,${starIn.toFixed(2)})`;
+    const STAR = ['     #     ', '    ###    ', '**##@@@##**', '  #@@@@@#  ', '  ##@@@##  ', ' ##     ## '];
+    STAR.forEach((line, r) => { for (let i = 0; i < line.length; i++) { const c = line[i]; if (c !== ' ') plot(col - 5 + i, row - 2 + r, 9, c, c === '@' ? pale : gold, true); } });
+  }
+
+  /* ---- paint ---- */
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#060912'); bg.addColorStop(0.6, '#0b1428'); bg.addColorStop(1, '#101d38');
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  ctx.globalCompositeOperation = 'lighter';
+  const gs = cw * 7;
+  for (let i = 0; i < glows.length; i += 3) {
+    ctx.globalAlpha = (glows[i + 2] - 0.5) * 1.4;
+    ctx.drawImage(glow, glows[i] - gs / 2, glows[i + 1] - gs / 2, gs, gs);
+  }
+  for (let i = 0; i < cool.length; i += 3) {
+    ctx.globalAlpha = cool[i + 2];
+    ctx.drawImage(glowCool, cool[i] - gs / 2, cool[i + 1] - gs / 2, gs, gs);
+  }
+  const bs = cw * 9;
+  for (let i = 0; i < discs.length; i += 4) {
+    ctx.globalAlpha = discs[i + 2];
+    const spr = discs[i + 3] ? glowGold : glowSilver;
+    ctx.drawImage(spr, discs[i] - bs / 2, discs[i + 1] - bs / 2, bs, bs);
+    ctx.drawImage(spr, discs[i] - bs / 3, discs[i + 1] - bs / 3, bs / 1.5, bs / 1.5);
+    ctx.drawImage(spr, discs[i] - bs / 3, discs[i + 1] - bs / 3, bs / 1.5, bs / 1.5);
+  }
+  if (starPx) { ctx.globalAlpha = Math.min(1, 0.9 * starIn + jing * 0.4); const s = cw * 22; ctx.drawImage(glow, starPx[0] - s / 2, starPx[1] - s / 2, s, s); }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  ctx.textBaseline = 'top';
+  ctx.font = `${fs}px ${FAM}`;
+  const fills = new Map();
+  for (let i = 0; i < cb.length; i++) {
+    if (cb[i] === undefined || !fillb[i] || fillb[i] === 'disc') continue;
+    let arr = fills.get(fillb[i]);
+    if (!arr) fills.set(fillb[i], arr = []);
+    arr.push(i);
+  }
+  ctx.globalAlpha = 0.32;
+  for (const [color, arr] of fills) {
+    const solid = color[0] === '!';
+    ctx.globalAlpha = solid ? 0.9 : 0.32;
+    ctx.fillStyle = solid ? color.slice(1) : color;
+    for (const i of arr) ctx.fillRect((i % cols) * cw - 0.3, Math.floor(i / cols) * ch - 0.3, cw + 0.6, ch + 0.6);
+  }
+  ctx.globalAlpha = 1;
+  const buckets = new Map();
+  for (let i = 0; i < cb.length; i++) {
+    if (cb[i] === undefined) continue;
+    const key = fillb[i] ? colb[i] + '|b' : colb[i];
+    let arr = buckets.get(key);
+    if (!arr) buckets.set(key, arr = []);
+    arr.push(i);
+  }
+  const thin = `${fs}px ${FAM}`, bold = `600 ${fs}px ${FAM}`;
+  for (const [key, arr] of buckets) {
+    const b = key.endsWith('|b');
+    ctx.font = b ? bold : thin;
+    ctx.fillStyle = b ? key.slice(0, -2) : key;
+    for (const i of arr) ctx.fillText(cb[i], (i % cols) * cw, Math.floor(i / cols) * ch);
+  }
+
+  // snow, small and drifting
+  ctx.font = `${fs * 0.85}px ${FAM}`;
+  for (let i = 0; i < snow.length; i++) {
+    const f = snow[i];
+    f.y += f.vy * dt; f.ph += f.f * dt;
+    if (f.y > H + 10) { snow[i] = newFlake(false); continue; }
+    ctx.fillStyle = `rgba(222,236,255,${f.a})`;
+    ctx.fillText(f.c, f.x + Math.sin(f.ph) * f.amp, f.y);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- interaction ---------- */
+let dragging = false, lastX = 0, lastT = 0, downX = 0, downT = 0;
+cvs.addEventListener('pointerdown', e => {
+  dragging = true; lastX = downX = e.clientX; lastT = downT = performance.now(); dragV = 0;
+  cvs.setPointerCapture(e.pointerId);
+});
+cvs.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const now = performance.now(), dx = e.clientX - lastX;
+  theta += dx * 0.008;
+  dragV = clamp(dx * 0.008 / Math.max(0.008, (now - lastT) / 1000), -6, 6) - spin;
+  lastX = e.clientX; lastT = now;
+});
+cvs.addEventListener('pointerup', e => {
+  dragging = false;
+  
+});
+cvs.addEventListener('pointercancel', () => { dragging = false; });
+
+document.getElementById('replay').onclick = () => { t0 = performance.now(); };
+
+addEventListener('resize', resize);
+const start = () => { resize(); requestAnimationFrame(t => { last = t; frame(t); }); };
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start, start);
+})();
+</script>
+</body>
+</html>
