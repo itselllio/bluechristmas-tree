@@ -138,7 +138,7 @@ const L = (() => { const v = [-0.55, 0.55, 0.65], m = Math.hypot(...v); return v
 const onTree = (y, a, k) => { const r = envR(y) * k; return { x: Math.cos(a) * r, y, z: Math.sin(a) * r, a }; };
 
 const needles = [];
-for (let i = 0; i < 30000; i++) {
+for (let i = 0; i < 16000; i++) {
   const y = 1 - Math.sqrt(Math.random());
   const a = rnd(TAU);
   const inner = Math.random() < 0.8 ? 1 - rnd(0.09) : rnd(0.35, 0.85);
@@ -326,8 +326,8 @@ function resize() {
   cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
   const avail = H - (document.getElementById('code').offsetHeight || 0);
   AVAIL = avail;
-  scale = Math.min(avail * 0.46, W * 0.92 / 2.45);
-  cx = W / 2; baseY = avail * 0.72;
+  scale = Math.min(avail * 0.5, W * 0.92 / 2.45);
+  cx = W / 2; baseY = avail * 0.68;
   zb = new Float32Array(cols * rows);
   cb = new Array(cols * rows);
   colb = new Array(cols * rows);
@@ -444,8 +444,8 @@ function frame(now) {
     const front = clamp((gy - n.y) / 0.08, 0, 1);
     const sx = 0.35 + 0.65 * front;
     if (!project(n.x * sx, n.y, n.z * sx)) continue;
-    let b = 0.2 + 0.68 * shade(n.nx, n.ny, n.nz) + (n.k - 0.5) * 0.3;
-    b *= n.inner > 0.9 ? 1 : 0.7;
+    let b = 0.12 + 0.7 * shade(n.nx, n.ny, n.nz) + (n.k - 0.5) * 0.35;
+    b *= n.inner > 0.9 ? 1 : 0.55;
     b = clamp(b, 0, 0.999);
     plot(P.col, P.row, P.depth, NEEDLE_CH[Math.floor(b * 10)], theme.needle[Math.floor(b * 10)]);
   }
@@ -619,17 +619,17 @@ function frame(now) {
     const pulse = Math.min(1, 0.75 + 0.25 * Math.sin(tt * 2.2) + jing);
     const gold = `rgba(255,226,160,${(starIn * pulse).toFixed(2)})`;
     const pale = `rgba(255,240,205,${starIn.toFixed(2)})`;
-    const sx = P.px, sy = P.py - ch * 1.8;
+    const sx = P.px, sy = P.py - ch * 1.2;
     starPx = [sx, sy];
-    const R = Math.max(ch * 4.2, scale * 0.13) * (0.6 + 0.4 * starIn) * (1 + 0.04 * Math.sin(tt * 2.2)), r0 = R * 0.46;
+    const R = Math.max(ch * 3, scale * 0.09) * (0.6 + 0.4 * starIn) * (1 + 0.04 * Math.sin(tt * 2.2)), r0 = R * 0.46;
     const verts = [];
     for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r0 : R; verts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
     const inside = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = verts[i], [xj, yj] = verts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
     // diagonal light rays behind the star
     for (const a of [-0.62, -2.52, 0.62, 2.52]) {
       const c = Math.abs(Math.cos(a) * Math.sin(a)) > 0 && Math.cos(a) * Math.sin(a) > 0 ? '\\' : '/';
-      for (let d = R * 0.9; d < R * 2.6; d += cw * 0.8) {
-        const al = (1 - (d - R * 0.9) / (R * 1.7)) * 0.75 * starIn * pulse;
+      for (let d = R * 0.9; d < R * 2.1; d += cw * 0.8) {
+        const al = (1 - (d - R * 0.9) / (R * 1.2)) * 0.75 * starIn * pulse;
         plot(Math.floor((sx + Math.cos(a) * d) / cw), Math.floor((sy + Math.sin(a) * d) / ch), 8.9, c, `rgba(255,214,130,${al.toFixed(2)})`, true);
       }
     }
@@ -737,17 +737,35 @@ function frame(now) {
       ctx.fillText(k ? '.' : '|', r.x, r.y + k * ch * 0.6);
     }
   }
+  ctx.font = `${fs}px ${FAM}`;
   for (let i = sparks.length - 1; i >= 0; i--) {
     const p = sparks[i];
     p.life -= dt;
     if (p.life <= 0) { sparks.splice(i, 1); continue; }
-    p.vx *= Math.pow(0.35, dt); p.vy = p.vy * Math.pow(0.35, dt) + 46 * dt;
+    p.vx *= Math.pow(0.42, dt); p.vy = p.vy * Math.pow(0.42, dt) + 38 * dt;
     p.x += p.vx * dt; p.y += p.vy * dt;
     const f = p.life / p.max;
-    ctx.globalAlpha = Math.min(1, f * 1.4) * (0.75 + 0.25 * Math.sin(tt * 30 + p.ph));
+    const v = Math.hypot(p.vx, p.vy) || 1;
+    let ang = Math.atan2(p.vy, p.vx) * 180 / Math.PI; ang = (ang + 180) % 180;
+    const c = ang < 22.5 || ang >= 157.5 ? '-' : ang < 67.5 ? '\\' : ang < 112.5 ? '|' : '/';
+    const len = Math.min(7, 2 + v / 30);
     ctx.fillStyle = p.color;
-    ctx.fillText(f > 0.65 ? '*' : f > 0.35 ? '+' : '.', p.x, p.y);
-    if (f > 0.7 && p.glow) { ctx.globalAlpha = (f - 0.7) * 1.2; ctx.drawImage(p.sprite, p.x - cw * 2, p.y - cw * 1.5, cw * 4, cw * 4); }
+    for (let k = 1; k <= len; k++) {
+      ctx.globalAlpha = f * (1 - k / (len + 1)) * 0.85;
+      ctx.fillText(c, p.x - p.vx / v * k * cw * 0.85 - cw * 0.3, p.y - p.vy / v * k * ch * 0.55);
+    }
+    ctx.globalAlpha = Math.min(1, f * 1.5) * (0.7 + 0.3 * Math.sin(tt * 25 + p.ph));
+    ctx.fillText(p.tip ? 'o' : '*', p.x - cw * 0.3, p.y);
+    if (p.tip && f > 0.3) { ctx.globalAlpha = f * 0.6; ctx.drawImage(p.sprite, p.x - cw * 1.7, p.y - cw * 1.1, cw * 3.4, cw * 3.4); }
+  }
+  for (let i = glitter.length - 1; i >= 0; i--) {
+    const g = glitter[i];
+    g.t += dt; g.y += 10 * dt;
+    if (g.t > g.max) { glitter.splice(i, 1); continue; }
+    if (g.t < 0) continue;
+    ctx.globalAlpha = (1 - g.t / g.max) * (Math.sin(tt * 40 + g.ph) > 0.2 ? 1 : 0.15);
+    ctx.fillStyle = '#fff3dc';
+    ctx.fillText('.', g.x, g.y);
   }
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
@@ -767,28 +785,38 @@ function frame(now) {
 }
 
 /* ---------- fireworks ---------- */
-const FW_COLORS = [['#ffd98a', glowGold], ['#a9d4ff', glowCool], ['#eef3fa', glowSilver], ['#ffc2d6', glowGold], ['#b8f0e0', glowCool]];
-let rockets = [], sparks = [], fwClock = 0;
+const FW_COLORS = [
+  ['#ffd9a0', glowGold], ['#ffc8a2', glowGold], ['#fff4e2', glowSilver], ['#ffb9ae', glowGold], ['#e2ecff', glowCool],
+];
+let rockets = [], sparks = [], glitter = [], fwClock = 0;
 function launch() {
-  const side = Math.random() < 0.5 ? rnd(0.08, 0.34) : rnd(0.66, 0.92);
-  const [color, sprite] = FW_COLORS[Math.floor(rnd(FW_COLORS.length))];
-  rockets.push({ x: W * side, y: AVAIL * 0.95, vy: -rnd(330, 420) * Math.sqrt(AVAIL / 600), ty: AVAIL * rnd(0.1, 0.32), color, sprite });
+  const n = Math.random() < 0.3 ? 2 + (Math.random() < 0.4) : 1;
+  const side = Math.random() < 0.5 ? rnd(0.12, 0.3) : rnd(0.7, 0.88);
+  for (let j = 0; j < n; j++) {
+    const [color, sprite] = FW_COLORS[Math.floor(rnd(FW_COLORS.length))];
+    rockets.push({ x: W * clamp(side + rnd(-0.08, 0.08), 0.05, 0.95), y: AVAIL * 0.95 + j * 30, vy: -rnd(330, 420) * Math.sqrt(AVAIL / 600),
+      ty: AVAIL * rnd(0.1, 0.3), color, sprite });
+  }
 }
 function burst(r) {
-  const kind = Math.random() < 0.22 ? 'heart' : Math.random() < 0.5 ? 'ring' : 'peony';
-  const n = kind === 'heart' ? 56 : 80, sp = rnd(140, 190) * Math.sqrt(AVAIL / 600);
+  const heart = Math.random() < 0.12;
+  const n = heart ? 60 : Math.round(rnd(90, 130)), sp = rnd(150, 210) * Math.sqrt(AVAIL / 600);
   for (let i = 0; i < n; i++) {
     let vx, vy;
-    if (kind === 'heart') {
+    if (heart) {
       const a = i / n * TAU;
-      vx = 16 * Math.sin(a) ** 3 / 16; vy = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 16;
-      vx *= sp; vy *= sp;
+      vx = Math.sin(a) ** 3 * sp; vy = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 16 * sp;
     } else {
-      const a = kind === 'ring' ? i / n * TAU : rnd(TAU), m = kind === 'ring' ? sp : sp * Math.sqrt(rnd(0.15, 1));
+      const a = rnd(TAU), m = sp * (0.35 + 0.65 * Math.sqrt(Math.random()));
       vx = Math.cos(a) * m; vy = Math.sin(a) * m;
     }
-    const max = rnd(1.3, 2.1);
-    sparks.push({ x: r.x, y: r.y, vx, vy, life: max, max, color: r.color, sprite: r.sprite, glow: i % 2 === 0, ph: rnd(TAU) });
+    const max = rnd(1.4, 2.4);
+    const white = Math.random() < 0.25;
+    sparks.push({ x: r.x, y: r.y, vx, vy, life: max, max, color: white ? '#fff6e6' : r.color, sprite: r.sprite, tip: Math.random() < 0.45, ph: rnd(TAU) });
+  }
+  for (let i = 0; i < 40; i++) {
+    const a = rnd(TAU), d = rnd(0.2, 1) * sp * 1.1;
+    glitter.push({ x: r.x + Math.cos(a) * d, y: r.y + Math.sin(a) * d * 0.9, t: -rnd(0.6, 1.4), max: rnd(0.8, 1.6), ph: rnd(TAU) });
   }
 }
 
@@ -857,7 +885,7 @@ cvs.addEventListener('pointerup', e => {
 });
 cvs.addEventListener('pointercancel', () => { dragging = false; });
 
-document.getElementById('replay').onclick = () => { t0 = performance.now(); resetCode(); rockets = []; sparks = []; };
+document.getElementById('replay').onclick = () => { t0 = performance.now(); resetCode(); rockets = []; sparks = []; glitter = []; };
 
 addEventListener('resize', resize);
 const start = () => { resize(); requestAnimationFrame(t => { last = t; frame(t); }); };
