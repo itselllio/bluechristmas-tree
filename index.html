@@ -256,7 +256,7 @@ function stackRows(boxes, opt) {
     for (let r = 0; r < b.h; r++) {
       const row = new Array(W).fill(null);
       for (let i = 0; i < b.w; i++) {
-        const x = pad + i, onRib = opt.ribbon && (x === mid - 1 || x === mid);
+        const x = pad + i, onRib = opt.ribbon && x === mid;
         let cell;
         if (onRib) cell = ['rib', '|'];
         else if (r === 0) cell = ['lid', '='];
@@ -264,7 +264,7 @@ function stackRows(boxes, opt) {
         else if (opt.stitch && (i === 1 || i === b.w - 2) && r > 0 && r < b.h - 1) cell = ['stitch', ':'];
         else if (opt.lidBand && r < 2) cell = ['lid', '='];
         else if (i === 0 || i === b.w - 1) cell = ['side', ':'];
-        else { const pt = opt.pattern ? opt.pattern(x, rows.length) : ' '; cell = ['body', pt !== ' ' ? pt : ((x + r) % 3 ? '%' : '#')]; }
+        else { const h = (x * 37 + rows.length * 91) % 7; cell = ['body', '%#&%x#@'[h]]; }
         row[x] = cell;
       }
       rows.push(row);
@@ -272,42 +272,36 @@ function stackRows(boxes, opt) {
   }
   return rows;
 }
-const BOW_BIG = [' /^^\\ /^^\\ ', '(    >o<    )', ' \\__/ \\__/ ', '   //   \\\\   '];
-const BOW_SMALL = ['/^\\ /^\\', '\\_>o<_/', '  / \\  '];
-const floral = (x, y) => { const h = (x * 73 + y * 151) % 11; return h === 0 ? '*' : h === 4 ? '~' : h === 7 ? ',' : ' '; };
+const BOW_TINY = ['>o<'];
+/* colored glyphs only, no blocks behind: [glyph colour] per part */
 const MAT = {
-  toile:  { body: ['#e8edf1', '#8aa3c4'], side: ['#d3dbe2', '#8aa3c4'], lid: ['#f4f7f9', '#aebdcc'], rib: ['#8ea6be', '#d8e3ee'], bow: ['#8ea6be', '#e4edf6'], stitch: ['#e8edf1', '#8aa3c4'] },
-  navy:   { body: ['#24467e', '#3a5c96'], side: ['#1c3866', '#3a5c96'], lid: ['#2e5491', '#7f9cc8'], rib: ['#eee5d0', '#a99c80'], bow: ['#eee5d0', '#8a7d62'], stitch: ['#24467e', '#f2f5fb'] },
-  aqua:   { body: ['#9fd8e6', '#c4ecf4'], side: ['#86c3d3', '#c4ecf4'], lid: ['#b9e7f1', '#e6f8fc'], rib: ['#ffffff', '#d6e4ea'], bow: ['#ffffff', '#9bb7c2'], stitch: ['#9fd8e6', '#ffffff'] },
+  sky:    { body: '#a9cfee', side: '#7fa9cf', lid: '#d4e9fa', rib: '#ffffff', bow: '#ffffff' },
+  white:  { body: '#e6ecf2', side: '#b4bfcb', lid: '#ffffff', rib: '#a9cfee', bow: '#cfe4f7' },
+  silver: { body: '#c5ccd5', side: '#939ba6', lid: '#e8edf2', rib: '#9b3b4e', bow: '#c25a6e' },
+  blush:  { body: '#e3b7b0', side: '#b98d87', lid: '#f2d3ce', rib: '#fff4e2', bow: '#fff4e2' },
 };
 const SPRITES = [
-  { x: 0.0, z: 0.58, mat: 'toile', rows: stackRows([{ w: 15, h: 4 }], { ribbon: true, bow: BOW_SMALL, pattern: floral }) },
-  { x: 0.5, z: -0.3, mat: 'navy', rows: stackRows([{ w: 15, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
-  { x: -0.56, z: 0.22, mat: 'aqua', rows: stackRows([{ w: 16, h: 4 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
-  { x: -0.38, z: -0.52, mat: 'navy', rows: stackRows([{ w: 11, h: 3 }], { ribbon: true, bow: BOW_SMALL }) },
-  { x: 0.6, z: 0.12, mat: 'aqua', rows: stackRows([{ w: 11, h: 3 }], { ribbon: true, bow: BOW_SMALL }) },
+  { x: 0.0, z: 0.6, mat: 'sky', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_TINY }) },
+  { x: 0.52, z: -0.3, mat: 'white', rows: stackRows([{ w: 10, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
+  { x: -0.56, z: 0.22, mat: 'silver', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_TINY }) },
+  { x: -0.38, z: -0.5, mat: 'blush', rows: stackRows([{ w: 9, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
+  { x: 0.6, z: 0.14, mat: 'sky', rows: stackRows([{ w: 8, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
 ];
 SPRITES.forEach((sp, i) => { sp.gi = i; });
 giftN = SPRITES.length;
 
 /* rocking horse, light oak, head to the left; w wood, d darker mane/tail, e eye, h handle, s seat, r rocker */
 const HORSE_MAP = [
-  '      ddd                     ',
-  '     wwwdd                    ',
-  '    wwwwwdhhhh                ',
-  '   wewwwwwdd                  ',
-  '  wwwwwwwwwd                  ',
-  '  www   wwwwd             dd  ',
-  '         wwwssssssssssswwwddd ',
-  '         wwwwwwwwwwwwwwwww dd ',
-  '         wwww         wwww    ',
-  ' r       wwww         wwww   r',
-  ' rr      wwww         wwww  rr',
-  '  rrrrrrrrrrrrrrrrrrrrrrrrrrr ',
-  '     rrrrrrrrrrrrrrrrrrrrr    ',
+  '   dd           ',
+  '  wwdhh         ',
+  ' ewwwd          ',
+  'www  wsssssswd  ',
+  '     ww    ww dd',
+  'r    ww    ww  r',
+  ' rrrrrrrrrrrrrr ',
 ];
-const HORSE_MAT = { w: ['#c99c64', '#e2bd85', '%'], d: ['#8c6034', '#b5874f', '/'], e: ['#24160a', '#000000', '@'],
-  h: ['#e4c48e', '#f6e2b8', '='], s: ['#dcb47c', '#f2d7a6', '_'], r: ['#b98b58', '#dfb985', '='] };
+const HORSE_MAT = { w: ['', '#d8b27c', '%'], d: ['', '#a77a45', '#'], e: ['', '#3a2412', '@'],
+  h: ['', '#f0d6a6', '='], s: ['', '#ead0a0', '='], r: ['', '#c89a64', '~'] };
 const HORSE = { x: -0.3, z: -0.58 };
 
 /* ---------- soft props made of ellipsoid point clouds ---------- */
@@ -567,8 +561,7 @@ function frame(now) {
     for (let r = 0; r < H; r++) for (let i = 0; i < Wd; i++) {
       const cell = sp.rows[r][i];
       if (!cell) continue;
-      const [fill, ink] = M[cell[0]];
-      plot(c0 + i, r0 + r, dep, cell[1], ink, false, '~' + fill);
+      plot(c0 + i, r0 + r, dep, cell[1], M[cell[0]]);
     }
   }
 
@@ -583,7 +576,7 @@ function frame(now) {
       const m = HORSE_MAP[r][i];
       if (m === ' ') continue;
       const [fill, ink, glyph] = HORSE_MAT[m];
-      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink, false, '~' + fill);
+      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink);
     }
   }
 
