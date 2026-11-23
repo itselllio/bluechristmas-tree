@@ -42,7 +42,7 @@ canvas:active { cursor: grabbing; }
 @media (max-width: 520px) { .hint { display: none; } }
 .code {
   position: fixed; left: 0; right: 0; bottom: 0;
-  height: clamp(170px, 34vh, 340px);
+  height: clamp(120px, 21vh, 210px);
   display: grid; grid-template-rows: auto 1fr auto;
   background: rgba(5, 8, 16, 0.94);
   border-top: 1px solid #1a2540;
@@ -326,8 +326,8 @@ function resize() {
   cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
   const avail = H - (document.getElementById('code').offsetHeight || 0);
   AVAIL = avail;
-  scale = Math.min(avail * 0.5, W * 0.92 / 2.45);
-  cx = W / 2; baseY = avail * 0.68;
+  scale = Math.min(H * 0.42, W * 0.92 / 2.45);
+  cx = W / 2; baseY = Math.min(H * 0.65, avail - scale * 0.45);
   zb = new Float32Array(cols * rows);
   cb = new Array(cols * rows);
   colb = new Array(cols * rows);
@@ -581,7 +581,7 @@ function frame(now) {
     const u = clamp(t / FLAKE_T, 0, 1);
     const fy = -AVAIL * 0.2 + (landY + AVAIL * 0.2) * (u * u * (3 - 2 * u));
     const fx = landX + Math.sin(t * 1.3) * W * 0.04 * (1 - u);
-    const Lp = AVAIL * 0.2 * (1 - 0.75 * u * u);
+    const Lp = AVAIL * 0.11 * (1 - 0.7 * u * u);
     const fade = t < FLAKE_T ? 1 : 1 - (t - FLAKE_T) / 0.6;
     const rot = t * 0.5;
     const segs = [];
