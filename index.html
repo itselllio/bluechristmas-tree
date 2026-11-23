@@ -272,20 +272,47 @@ function stackRows(boxes, opt) {
   }
   return rows;
 }
-const BOW_TINY = ['>o<'];
-/* colored glyphs only, no blocks behind: [glyph colour] per part */
+/* a classic gift: bow on top, a lid that overhangs the box, and a ribbon crossing the front */
+function giftRows(w, h) {
+  const mid = Math.floor(w / 2), rows = [];
+  const row = () => new Array(w).fill(null);
+  const bow = row();
+  [['(', -2], ['\\', -1], ['o', 0], ['/', 1], [')', 2]].forEach(([c, d]) => { bow[mid + d] = ['bow', c]; });
+  rows.push(bow);
+  const top = row();
+  for (let i = 0; i < w; i++) top[i] = i === mid ? ['rib', '|'] : ['edge', i === 0 || i === w - 1 ? '.' : '_'];
+  rows.push(top);
+  const lid = row();
+  for (let i = 0; i < w; i++) lid[i] = i === mid ? ['rib', '#'] : i === 0 || i === w - 1 ? ['edge', '['] : ['lid', '='];
+  lid[w - 1] = ['edge', ']'];
+  rows.push(lid);
+  const band = Math.floor(h / 2);
+  for (let r = 0; r < h; r++) {
+    const b = row(), last = r === h - 1;
+    for (let i = 1; i < w - 1; i++) {
+      if (i === mid) b[i] = ['rib', r === band ? '+' : '|'];
+      else if (r === band) b[i] = ['rib', '-'];
+      else if (last) b[i] = ['edge', '_'];
+      else b[i] = ['body', '%#%x%#&'[(i * 5 + r * 3) % 7]];
+    }
+    b[1 - 1] = null; b[1] = ['edge', '|']; b[w - 2] = ['edge', '|'];
+    rows.push(b);
+  }
+  return rows;
+}
+/* colored glyphs only, like the tree */
 const MAT = {
-  sky:    { body: '#a9cfee', side: '#7fa9cf', lid: '#d4e9fa', rib: '#ffffff', bow: '#ffffff' },
-  white:  { body: '#e6ecf2', side: '#b4bfcb', lid: '#ffffff', rib: '#a9cfee', bow: '#cfe4f7' },
-  silver: { body: '#c5ccd5', side: '#939ba6', lid: '#e8edf2', rib: '#9b3b4e', bow: '#c25a6e' },
-  blush:  { body: '#e3b7b0', side: '#b98d87', lid: '#f2d3ce', rib: '#fff4e2', bow: '#fff4e2' },
+  sky:    { body: '#8fb9de', edge: '#cfe5f8', lid: '#b9d9f2', rib: '#ffffff', bow: '#ffffff' },
+  white:  { body: '#c9d3dd', edge: '#ffffff', lid: '#eef3f7', rib: '#8fc1ec', bow: '#a9d2f5' },
+  silver: { body: '#aab3be', edge: '#e6ebf0', lid: '#ccd3db', rib: '#c0526a', bow: '#d4687e' },
+  blush:  { body: '#d4a49c', edge: '#f4d8d2', lid: '#e8c1ba', rib: '#fff3df', bow: '#fff3df' },
 };
 const SPRITES = [
-  { x: 0.0, z: 0.6, mat: 'sky', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_TINY }) },
-  { x: 0.52, z: -0.3, mat: 'white', rows: stackRows([{ w: 10, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
-  { x: -0.56, z: 0.22, mat: 'silver', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_TINY }) },
-  { x: -0.38, z: -0.5, mat: 'blush', rows: stackRows([{ w: 9, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
-  { x: 0.6, z: 0.14, mat: 'sky', rows: stackRows([{ w: 8, h: 3 }], { ribbon: true, bow: BOW_TINY }) },
+  { x: 0.0, z: 0.6, mat: 'sky', rows: giftRows(13, 4) },
+  { x: 0.52, z: -0.3, mat: 'white', rows: giftRows(11, 3) },
+  { x: -0.56, z: 0.22, mat: 'silver', rows: giftRows(13, 4) },
+  { x: 0.12, z: -0.64, mat: 'blush', rows: giftRows(11, 3) },
+  { x: 0.6, z: 0.14, mat: 'sky', rows: giftRows(9, 3) },
 ];
 SPRITES.forEach((sp, i) => { sp.gi = i; });
 giftN = SPRITES.length;
