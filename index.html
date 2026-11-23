@@ -259,12 +259,12 @@ function stackRows(boxes, opt) {
         const x = pad + i, onRib = opt.ribbon && (x === mid - 1 || x === mid);
         let cell;
         if (onRib) cell = ['rib', '|'];
-        else if (r === 0) cell = ['lid', '_'];
+        else if (r === 0) cell = ['lid', '='];
         else if (opt.stitch && (r === 1 || r === b.h - 2) && i > 0 && i < b.w - 1) cell = ['stitch', '-'];
         else if (opt.stitch && (i === 1 || i === b.w - 2) && r > 0 && r < b.h - 1) cell = ['stitch', ':'];
-        else if (opt.lidBand && r < 2) cell = ['lid', r === 1 ? '_' : ' '];
-        else if (i === 0 || i === b.w - 1) cell = ['side', ' '];
-        else cell = ['body', opt.pattern ? opt.pattern(x, rows.length) : ' '];
+        else if (opt.lidBand && r < 2) cell = ['lid', '='];
+        else if (i === 0 || i === b.w - 1) cell = ['side', ':'];
+        else { const pt = opt.pattern ? opt.pattern(x, rows.length) : ' '; cell = ['body', pt !== ' ' ? pt : ((x + r) % 3 ? '%' : '#')]; }
         row[x] = cell;
       }
       rows.push(row);
@@ -281,11 +281,11 @@ const MAT = {
   aqua:   { body: ['#9fd8e6', '#c4ecf4'], side: ['#86c3d3', '#c4ecf4'], lid: ['#b9e7f1', '#e6f8fc'], rib: ['#ffffff', '#d6e4ea'], bow: ['#ffffff', '#9bb7c2'], stitch: ['#9fd8e6', '#ffffff'] },
 };
 const SPRITES = [
-  { x: 0.0, z: 0.58, mat: 'toile', rows: stackRows([{ w: 10, h: 3 }, { w: 13, h: 3 }, { w: 16, h: 4 }], { ribbon: true, bow: BOW_BIG, pattern: floral }) },
-  { x: 0.5, z: -0.3, mat: 'navy', rows: stackRows([{ w: 10, h: 3 }, { w: 13, h: 4 }, { w: 16, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
-  { x: -0.56, z: 0.22, mat: 'aqua', rows: stackRows([{ w: 16, h: 5 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
-  { x: -0.38, z: -0.52, mat: 'navy', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
-  { x: 0.6, z: 0.12, mat: 'aqua', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
+  { x: 0.0, z: 0.58, mat: 'toile', rows: stackRows([{ w: 15, h: 4 }], { ribbon: true, bow: BOW_SMALL, pattern: floral }) },
+  { x: 0.5, z: -0.3, mat: 'navy', rows: stackRows([{ w: 15, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
+  { x: -0.56, z: 0.22, mat: 'aqua', rows: stackRows([{ w: 16, h: 4 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
+  { x: -0.38, z: -0.52, mat: 'navy', rows: stackRows([{ w: 11, h: 3 }], { ribbon: true, bow: BOW_SMALL }) },
+  { x: 0.6, z: 0.12, mat: 'aqua', rows: stackRows([{ w: 11, h: 3 }], { ribbon: true, bow: BOW_SMALL }) },
 ];
 SPRITES.forEach((sp, i) => { sp.gi = i; });
 giftN = SPRITES.length;
@@ -306,8 +306,8 @@ const HORSE_MAP = [
   '  rrrrrrrrrrrrrrrrrrrrrrrrrrr ',
   '     rrrrrrrrrrrrrrrrrrrrr    ',
 ];
-const HORSE_MAT = { w: ['#c99c64', '#e2bd85', '='], d: ['#8c6034', '#b5874f', '/'], e: ['#24160a', '#000000', '@'],
-  h: ['#e4c48e', '#f6e2b8', '='], s: ['#dcb47c', '#f2d7a6', '_'], r: ['#b98b58', '#dfb985', '-'] };
+const HORSE_MAT = { w: ['#c99c64', '#e2bd85', '%'], d: ['#8c6034', '#b5874f', '/'], e: ['#24160a', '#000000', '@'],
+  h: ['#e4c48e', '#f6e2b8', '='], s: ['#dcb47c', '#f2d7a6', '_'], r: ['#b98b58', '#dfb985', '='] };
 const HORSE = { x: -0.3, z: -0.58 };
 
 /* ---------- soft props made of ellipsoid point clouds ---------- */
@@ -568,7 +568,7 @@ function frame(now) {
       const cell = sp.rows[r][i];
       if (!cell) continue;
       const [fill, ink] = M[cell[0]];
-      plot(c0 + i, r0 + r, dep, cell[1], ink, false, '!' + fill);
+      plot(c0 + i, r0 + r, dep, cell[1], ink, false, '~' + fill);
     }
   }
 
@@ -583,7 +583,7 @@ function frame(now) {
       const m = HORSE_MAP[r][i];
       if (m === ' ') continue;
       const [fill, ink, glyph] = HORSE_MAT[m];
-      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink, false, '!' + fill);
+      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink, false, '~' + fill);
     }
   }
 
@@ -760,9 +760,9 @@ function frame(now) {
   }
   ctx.globalAlpha = 0.32;
   for (const [color, arr] of fills) {
-    const solid = color[0] === '!';
-    ctx.globalAlpha = solid ? 0.9 : 0.32;
-    ctx.fillStyle = solid ? color.slice(1) : color;
+    const solid = color[0] === '!', soft = color[0] === '~';
+    ctx.globalAlpha = solid ? 0.9 : soft ? 0.42 : 0.32;
+    ctx.fillStyle = solid || soft ? color.slice(1) : color;
     for (const i of arr) ctx.fillRect((i % cols) * cw - 0.3, Math.floor(i / cols) * ch - 0.3, cw + 0.6, ch + 0.6);
   }
   ctx.globalAlpha = 1;
