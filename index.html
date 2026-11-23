@@ -40,6 +40,38 @@ canvas:active { cursor: grabbing; }
 .bar button:focus-visible { outline: 1px dashed var(--velvet); outline-offset: 2px; }
 .hint { font-size: 11px; color: var(--dim); pointer-events: none; }
 @media (max-width: 520px) { .hint { display: none; } }
+.code {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  height: clamp(170px, 34vh, 340px);
+  display: grid; grid-template-rows: auto 1fr auto;
+  background: rgba(5, 8, 16, 0.94);
+  border-top: 1px solid #1a2540;
+  font: 11.5px/1.55 var(--mono);
+  color: #9fb0cc;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.code-head, .code-foot {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-block: 6px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  color: var(--dim); font-size: 11px;
+}
+.code-head { border-bottom: 1px solid #141d33; }
+.code-head b { color: var(--frost); font-weight: 600; }
+.code-foot { border-top: 1px solid #141d33; }
+.code-foot .run::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6fd08c; margin-right: 6px; vertical-align: 1px; }
+#src {
+  margin: 0; overflow: hidden; white-space: pre;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 6px;
+}
+#src .ln { display: inline-block; width: 3.5ch; margin-right: 1.5ch; text-align: right; color: #3b4866; user-select: none; }
+#src .k { color: #c792ea; } #src .s { color: #c3e88d; } #src .n { color: #f78c6c; } #src .c { color: #546480; font-style: italic; }
+#src .cur { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.2em; background: #8ec2f5; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #src .cur { animation: none; } }
 </style>
 <style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 </head>
@@ -51,9 +83,15 @@ canvas:active { cursor: grabbing; }
   <button id="replay">[ replay ]</button>
   <span class="hint">drag to turn</span>
 </div>
+<div class="code" id="code" aria-hidden="true">
+  <div class="code-head"><b>christmas_tree.js</b><span id="stats">rotation 0.00°&nbsp;&nbsp; lights 0&nbsp;&nbsp; ornaments 0</span></div>
+  <pre id="src"></pre>
+  <div class="code-foot"><span class="run">running</span><span id="fps">-- fps</span></div>
+</div>
 
 <script>
 (() => {
+const SOURCE = (document.currentScript && document.currentScript.textContent || '').replace(/^\s*\n/, '');
 const cvs = document.getElementById('c');
 const ctx = cvs.getContext('2d');
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -286,8 +324,9 @@ function resize() {
   ctx.font = `${fs}px ${FAM}`;
   cw = ctx.measureText('M').width; ch = fs * 1.1;
   cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
-  scale = Math.min(H * 0.42, W * 0.92 / 2.45);
-  cx = W / 2; baseY = H * 0.65;
+  const avail = H - (document.getElementById('code').offsetHeight || 0);
+  scale = Math.min(avail * 0.5, W * 0.92 / 2.45);
+  cx = W / 2; baseY = avail * 0.68;
   zb = new Float32Array(cols * rows);
   cb = new Array(cols * rows);
   colb = new Array(cols * rows);
@@ -484,6 +523,7 @@ function frame(now) {
   }
 
   // fairy lights
+  let litCount = 0;
   const lightIn = clamp((t - G0 - 1) / 1.5, 0, 1);
   if (lightIn > 0) for (const l of lights) {
     if (l.y > gy) continue;
@@ -495,6 +535,7 @@ function frame(now) {
     const c = tw > 0.82 ? '*' : tw > 0.5 ? 'o' : '.';
     plot(P.col, P.row, P.depth + 0.01, c, `rgba(255,${Math.round(214 + tw * 30)},${Math.round(150 + tw * 60)},${(0.35 + tw * 0.65).toFixed(2)})`, true);
     if (tw > 0.6) glows.push(P.px, P.py, tw);
+    litCount++;
   }
 
   // ornaments pop in as the growth front passes them
@@ -614,7 +655,54 @@ function frame(now) {
     ctx.fillText(f.c, f.x + Math.sin(f.ph) * f.amp, f.y);
   }
 
+  updateCode(now, dt, litCount);
   requestAnimationFrame(frame);
+}
+
+/* ---------- code panel: types out this page's own script ---------- */
+const srcEl = document.getElementById('src'), statsEl = document.getElementById('stats'), fpsEl = document.getElementById('fps');
+const LINES = SOURCE.split('\n');
+const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const TOK = /(\/\/.*$|\/\*.*?\*\/)|('(?:\\.|[^'\\])*'?|"(?:\\.|[^"\\])*"?|`(?:\\.|[^`\\])*`?)|\b(const|let|for|of|if|else|return|function|new|continue|break|while|true|false|null|typeof)\b|\b(\d+(?:\.\d+)?)\b/g;
+function hl(line) {
+  let out = '', last = 0;
+  line.replace(TOK, (m, c, s, k, n, i) => {
+    out += esc(line.slice(last, i));
+    out += `<span class="${c ? 'c' : s ? 's' : k ? 'k' : 'n'}">${esc(m)}</span>`;
+    last = i + m.length;
+    return m;
+  });
+  return out + esc(line.slice(last));
+}
+const HL = LINES.map(hl);
+let typed = 0, shownKey = '', statT = 0, frames = 0;
+function resetCode() { typed = 0; }
+function updateCode(now, dt, lit) {
+  typed += dt * (reduce ? 4000 : 520);
+  let rem = Math.floor(typed), li = 0;
+  while (li < LINES.length && rem > LINES[li].length) { rem -= LINES[li].length + 1; li++; }
+  if (li >= LINES.length) { typed = 0; li = 0; rem = 0; }
+  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 18;
+  const fit = Math.max(1, Math.floor(srcEl.clientHeight / lh) - 1);
+  const key = li + ':' + rem;
+  if (key !== shownKey) {
+    shownKey = key;
+    const from = Math.max(0, li - fit + 1);
+    let html = '';
+    for (let i = from; i <= li; i++) {
+      const body = i < li ? HL[i] : hl(LINES[i].slice(0, rem)) + '<span class="cur"></span>';
+      html += `<span class="ln">${i + 1}</span>${body}\n`;
+    }
+    srcEl.innerHTML = html;
+  }
+  frames++;
+  if (now - statT > 250) {
+    const deg = ((theta * 180 / Math.PI) % 360 + 360) % 360;
+    const shown = orns.filter(o => o.y < (FLOOR + 1.2) && viewNZ(Math.cos(o.a), Math.sin(o.a)) > 0.1).length;
+    statsEl.textContent = `rotation ${deg.toFixed(2)}°   lights ${lit}   ornaments ${shown}`;
+    fpsEl.textContent = `${Math.round(frames * 1000 / (now - statT || 1))} fps`;
+    statT = now; frames = 0;
+  }
 }
 
 /* ---------- interaction ---------- */
@@ -636,7 +724,7 @@ cvs.addEventListener('pointerup', e => {
 });
 cvs.addEventListener('pointercancel', () => { dragging = false; });
 
-document.getElementById('replay').onclick = () => { t0 = performance.now(); };
+document.getElementById('replay').onclick = () => { t0 = performance.now(); resetCode(); };
 
 addEventListener('resize', resize);
 const start = () => { resize(); requestAnimationFrame(t => { last = t; frame(t); }); };
