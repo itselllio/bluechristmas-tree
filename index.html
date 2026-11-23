@@ -138,7 +138,7 @@ const L = (() => { const v = [-0.55, 0.55, 0.65], m = Math.hypot(...v); return v
 const onTree = (y, a, k) => { const r = envR(y) * k; return { x: Math.cos(a) * r, y, z: Math.sin(a) * r, a }; };
 
 const needles = [];
-for (let i = 0; i < 16000; i++) {
+for (let i = 0; i < 30000; i++) {
   const y = 1 - Math.sqrt(Math.random());
   const a = rnd(TAU);
   const inner = Math.random() < 0.8 ? 1 - rnd(0.09) : rnd(0.35, 0.85);
@@ -313,7 +313,7 @@ for (let i = 0; i < 1100; i++) {
 }
 
 /* ---------- viewport / grid ---------- */
-let W, H, dpr, fs, cw, ch, cols, rows, scale, cx, baseY;
+let W, H, dpr, fs, cw, ch, cols, rows, scale, cx, baseY, AVAIL;
 let zb, cb, colb, fillb;
 function resize() {
   dpr = Math.min(devicePixelRatio || 1, 2);
@@ -325,8 +325,9 @@ function resize() {
   cw = ctx.measureText('M').width; ch = fs * 1.1;
   cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
   const avail = H - (document.getElementById('code').offsetHeight || 0);
-  scale = Math.min(avail * 0.5, W * 0.92 / 2.45);
-  cx = W / 2; baseY = avail * 0.68;
+  AVAIL = avail;
+  scale = Math.min(avail * 0.46, W * 0.92 / 2.45);
+  cx = W / 2; baseY = avail * 0.72;
   zb = new Float32Array(cols * rows);
   cb = new Array(cols * rows);
   colb = new Array(cols * rows);
@@ -396,7 +397,7 @@ const glowGold = glowSprite('255,190,70');
 const glowSilver = glowSprite('215,228,245');
 
 /* ---------- frame ---------- */
-const G0 = 1.2, GD = 8.5, GEND = G0 + GD;
+const FLAKE_T = 3.0, G0 = 3.4, GD = 8.5, GEND = G0 + GD;
 let t0 = null, last = performance.now(), jingleAt = -1e9;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -411,7 +412,7 @@ function frame(now) {
 
   const gp = clamp((t - G0) / GD, 0, 1);
   const grow = 0.5 - 0.5 * Math.cos(Math.PI * gp);
-  const ringT = ease(t / 1.4);
+  const ringT = ease((t - FLAKE_T + 0.3) / 1.4);
   const gy = FLOOR + grow * (1.04 - FLOOR);
 
   // ground snow + ribbon ring
@@ -430,7 +431,7 @@ function frame(now) {
 
   // basket
   for (const p of basket) {
-    if (p.y > gy) continue;
+    if (p.y >= gy) continue;
     if (!project(p.x, p.y, p.z)) continue;
     if (viewNZ(p.nx, p.nz) < -0.05) continue;
     const b = 0.2 + 0.8 * shade(p.nx, p.ny, p.nz);
@@ -443,8 +444,8 @@ function frame(now) {
     const front = clamp((gy - n.y) / 0.08, 0, 1);
     const sx = 0.35 + 0.65 * front;
     if (!project(n.x * sx, n.y, n.z * sx)) continue;
-    let b = 0.12 + 0.7 * shade(n.nx, n.ny, n.nz) + (n.k - 0.5) * 0.35;
-    b *= n.inner > 0.9 ? 1 : 0.55;
+    let b = 0.2 + 0.68 * shade(n.nx, n.ny, n.nz) + (n.k - 0.5) * 0.3;
+    b *= n.inner > 0.9 ? 1 : 0.7;
     b = clamp(b, 0, 0.999);
     plot(P.col, P.row, P.depth, NEEDLE_CH[Math.floor(b * 10)], theme.needle[Math.floor(b * 10)]);
   }
@@ -453,7 +454,7 @@ function frame(now) {
   const glows = [], cool = [], discs = [];
   for (const g of garland) {
     const prog = clamp((gy - g.yk - 0.03) / 0.08, 0, 1);
-    if (g.s > ease(prog)) continue;
+    if (prog <= 0 || g.s > ease(prog)) continue;
     const facing = viewNZ(g.nx, g.nz);
     if (facing < -0.05) continue;
     if (!project(g.x, g.y, g.z)) continue;
@@ -572,6 +573,44 @@ function frame(now) {
     }
   }
 
+  // opening snowflake
+  let flake = null;
+  if (t < FLAKE_T + 0.6) {
+    project(0, FLOOR + 0.05, 0);
+    const landX = P.px, landY = P.py;
+    const u = clamp(t / FLAKE_T, 0, 1);
+    const fy = -AVAIL * 0.2 + (landY + AVAIL * 0.2) * (u * u * (3 - 2 * u));
+    const fx = landX + Math.sin(t * 1.3) * W * 0.04 * (1 - u);
+    const Lp = AVAIL * 0.2 * (1 - 0.75 * u * u);
+    const fade = t < FLAKE_T ? 1 : 1 - (t - FLAKE_T) / 0.6;
+    const rot = t * 0.5;
+    const segs = [];
+    for (let k = 0; k < 6; k++) {
+      const a = rot + k * Math.PI / 3;
+      const ax = Math.cos(a), ay = Math.sin(a);
+      segs.push([0, 0, ax * Lp, ay * Lp]);
+      for (const [f, len] of [[0.42, 0.3], [0.68, 0.22], [0.86, 0.12]]) {
+        const bx = ax * Lp * f, by = ay * Lp * f;
+        for (const sgn of [-1, 1]) {
+          const b = a + sgn * Math.PI / 4;
+          segs.push([bx, by, bx + Math.cos(b) * Lp * len, by + Math.sin(b) * Lp * len]);
+        }
+      }
+    }
+    const col = `rgba(232,243,255,${(0.95 * fade).toFixed(2)})`;
+    for (const [x0, y0, x1, y1] of segs) {
+      let ang = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI; ang = (ang + 180) % 180;
+      const c = ang < 22.5 || ang >= 157.5 ? '-' : ang < 67.5 ? '\\' : ang < 112.5 ? '|' : '/';
+      const n = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (cw * 0.5)));
+      for (let i = 0; i <= n; i++) {
+        const x = fx + x0 + (x1 - x0) * i / n, y = fy + y0 + (y1 - y0) * i / n;
+        plot(Math.floor(x / cw), Math.floor(y / ch), 9, c, col, true);
+      }
+    }
+    plot(Math.floor(fx / cw), Math.floor(fy / ch), 9, '*', col, true);
+    flake = [fx, fy, Lp, fade, t > FLAKE_T - 0.2 ? clamp((t - FLAKE_T + 0.2) / 0.8, 0, 1) : 0];
+  }
+
   // star
   const starIn = ease((t - GEND + 0.2) / 0.9);
   let starPx = null;
@@ -580,8 +619,29 @@ function frame(now) {
     const pulse = Math.min(1, 0.75 + 0.25 * Math.sin(tt * 2.2) + jing);
     const gold = `rgba(255,226,160,${(starIn * pulse).toFixed(2)})`;
     const pale = `rgba(255,240,205,${starIn.toFixed(2)})`;
-    const STAR = ['     #     ', '    ###    ', '**##@@@##**', '  #@@@@@#  ', '  ##@@@##  ', ' ##     ## '];
-    STAR.forEach((line, r) => { for (let i = 0; i < line.length; i++) { const c = line[i]; if (c !== ' ') plot(col - 5 + i, row - 2 + r, 9, c, c === '@' ? pale : gold, true); } });
+    const sx = P.px, sy = P.py - ch * 1.8;
+    starPx = [sx, sy];
+    const R = Math.max(ch * 4.2, scale * 0.13) * (0.6 + 0.4 * starIn) * (1 + 0.04 * Math.sin(tt * 2.2)), r0 = R * 0.46;
+    const verts = [];
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r0 : R; verts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+    const inside = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = verts[i], [xj, yj] = verts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+    // diagonal light rays behind the star
+    for (const a of [-0.62, -2.52, 0.62, 2.52]) {
+      const c = Math.abs(Math.cos(a) * Math.sin(a)) > 0 && Math.cos(a) * Math.sin(a) > 0 ? '\\' : '/';
+      for (let d = R * 0.9; d < R * 2.6; d += cw * 0.8) {
+        const al = (1 - (d - R * 0.9) / (R * 1.7)) * 0.75 * starIn * pulse;
+        plot(Math.floor((sx + Math.cos(a) * d) / cw), Math.floor((sy + Math.sin(a) * d) / ch), 8.9, c, `rgba(255,214,130,${al.toFixed(2)})`, true);
+      }
+    }
+    const c0c = Math.floor((sx - R) / cw), c1c = Math.floor((sx + R) / cw), r0r = Math.floor((sy - R) / ch), r1r = Math.floor((sy + R) / ch);
+    for (let rr = r0r; rr <= r1r; rr++) for (let cc = c0c; cc <= c1c; cc++) {
+      const x = (cc + 0.5) * cw - sx, y = (rr + 0.5) * ch - sy;
+      if (!inside(x, y)) continue;
+      const d = Math.hypot(x, y) / R;
+      const ch2 = d < 0.28 ? '@' : d < 0.55 ? '@' : d < 0.8 ? '#' : '*';
+      const color = d < 0.28 ? pale : d < 0.55 ? `rgba(255,222,140,${starIn.toFixed(2)})` : gold;
+      plot(cc, rr, 9, ch2, color, true, d < 0.55 ? '#c8902a' : '#8a5f18');
+    }
   }
 
   /* ---- paint ---- */
@@ -608,7 +668,23 @@ function frame(now) {
     ctx.drawImage(spr, discs[i] - bs / 3, discs[i + 1] - bs / 3, bs / 1.5, bs / 1.5);
     ctx.drawImage(spr, discs[i] - bs / 3, discs[i + 1] - bs / 3, bs / 1.5, bs / 1.5);
   }
-  if (starPx) { ctx.globalAlpha = Math.min(1, 0.9 * starIn + jing * 0.4); const s = cw * 22; ctx.drawImage(glow, starPx[0] - s / 2, starPx[1] - s / 2, s, s); }
+  if (starPx) {
+    ctx.globalAlpha = Math.min(1, 0.9 * starIn);
+    const s = cw * 26; ctx.drawImage(glow, starPx[0] - s / 2, starPx[1] - s / 2, s, s);
+    // thin cross flare
+    const fl = (0.55 + 0.25 * Math.sin(tt * 1.7)) * starIn;
+    for (const [dx, dy, len] of [[1, 0, cw * 26], [0, 1, ch * 7.5]]) {
+      const g = ctx.createLinearGradient(starPx[0] - dx * len, starPx[1] - dy * len, starPx[0] + dx * len, starPx[1] + dy * len);
+      g.addColorStop(0, 'rgba(255,210,120,0)'); g.addColorStop(0.5, `rgba(255,236,190,${fl.toFixed(2)})`); g.addColorStop(1, 'rgba(255,210,120,0)');
+      ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(starPx[0] - dx * len, starPx[1] - dy * len); ctx.lineTo(starPx[0] + dx * len, starPx[1] + dy * len); ctx.stroke();
+    }
+  }
+  if (flake) {
+    ctx.globalAlpha = 0.5 * flake[3]; const s = flake[2] * 2.6;
+    ctx.drawImage(glowCool, flake[0] - s / 2, flake[1] - s / 2, s, s);
+    if (flake[4] > 0) { ctx.globalAlpha = Math.sin(flake[4] * Math.PI) * 0.9; const s2 = cw * 30; ctx.drawImage(glowCool, flake[0] - s2 / 2, flake[1] - s2 / 2, s2, s2); }
+  }
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 
@@ -645,6 +721,37 @@ function frame(now) {
     for (const i of arr) ctx.fillText(cb[i], (i % cols) * cw, Math.floor(i / cols) * ch);
   }
 
+  // fireworks
+  if (t > GEND + 4.8) {
+    fwClock -= dt;
+    if (fwClock <= 0) { launch(); fwClock = rnd(0.9, 1.8); }
+  }
+  ctx.font = `600 ${fs * 1.35}px ${FAM}`;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    r.y += r.vy * dt; r.vy += 60 * dt;
+    if (r.vy > -40 || r.y <= r.ty) { burst(r); rockets.splice(i, 1); continue; }
+    for (let k = 0; k < 4; k++) {
+      ctx.globalAlpha = 0.8 - k * 0.2; ctx.fillStyle = r.color;
+      ctx.fillText(k ? '.' : '|', r.x, r.y + k * ch * 0.6);
+    }
+  }
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i];
+    p.life -= dt;
+    if (p.life <= 0) { sparks.splice(i, 1); continue; }
+    p.vx *= Math.pow(0.35, dt); p.vy = p.vy * Math.pow(0.35, dt) + 46 * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    const f = p.life / p.max;
+    ctx.globalAlpha = Math.min(1, f * 1.4) * (0.75 + 0.25 * Math.sin(tt * 30 + p.ph));
+    ctx.fillStyle = p.color;
+    ctx.fillText(f > 0.65 ? '*' : f > 0.35 ? '+' : '.', p.x, p.y);
+    if (f > 0.7 && p.glow) { ctx.globalAlpha = (f - 0.7) * 1.2; ctx.drawImage(p.sprite, p.x - cw * 2, p.y - cw * 1.5, cw * 4, cw * 4); }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
   // snow, small and drifting
   ctx.font = `${fs * 0.85}px ${FAM}`;
   for (let i = 0; i < snow.length; i++) {
@@ -657,6 +764,32 @@ function frame(now) {
 
   updateCode(now, dt, litCount);
   requestAnimationFrame(frame);
+}
+
+/* ---------- fireworks ---------- */
+const FW_COLORS = [['#ffd98a', glowGold], ['#a9d4ff', glowCool], ['#eef3fa', glowSilver], ['#ffc2d6', glowGold], ['#b8f0e0', glowCool]];
+let rockets = [], sparks = [], fwClock = 0;
+function launch() {
+  const side = Math.random() < 0.5 ? rnd(0.08, 0.34) : rnd(0.66, 0.92);
+  const [color, sprite] = FW_COLORS[Math.floor(rnd(FW_COLORS.length))];
+  rockets.push({ x: W * side, y: AVAIL * 0.95, vy: -rnd(330, 420) * Math.sqrt(AVAIL / 600), ty: AVAIL * rnd(0.1, 0.32), color, sprite });
+}
+function burst(r) {
+  const kind = Math.random() < 0.22 ? 'heart' : Math.random() < 0.5 ? 'ring' : 'peony';
+  const n = kind === 'heart' ? 56 : 80, sp = rnd(140, 190) * Math.sqrt(AVAIL / 600);
+  for (let i = 0; i < n; i++) {
+    let vx, vy;
+    if (kind === 'heart') {
+      const a = i / n * TAU;
+      vx = 16 * Math.sin(a) ** 3 / 16; vy = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 16;
+      vx *= sp; vy *= sp;
+    } else {
+      const a = kind === 'ring' ? i / n * TAU : rnd(TAU), m = kind === 'ring' ? sp : sp * Math.sqrt(rnd(0.15, 1));
+      vx = Math.cos(a) * m; vy = Math.sin(a) * m;
+    }
+    const max = rnd(1.3, 2.1);
+    sparks.push({ x: r.x, y: r.y, vx, vy, life: max, max, color: r.color, sprite: r.sprite, glow: i % 2 === 0, ph: rnd(TAU) });
+  }
 }
 
 /* ---------- code panel: types out this page's own script ---------- */
@@ -724,7 +857,7 @@ cvs.addEventListener('pointerup', e => {
 });
 cvs.addEventListener('pointercancel', () => { dragging = false; });
 
-document.getElementById('replay').onclick = () => { t0 = performance.now(); resetCode(); };
+document.getElementById('replay').onclick = () => { t0 = performance.now(); resetCode(); rockets = []; sparks = []; };
 
 addEventListener('resize', resize);
 const start = () => { resize(); requestAnimationFrame(t => { last = t; frame(t); }); };
