@@ -242,94 +242,14 @@ function addGift(cx, cz, w, h, d, rot, style, y0 = 0) {
   gifts.push({ gi, x: cx, y: FLOOR + y0 + h + 0.02, z: cz, bowTop: st8.bow, fish: st8.fish, card: st8.card });
 }
 
-/* gifts and the rocking horse as pixel sprites: each cell is a solid block with a texture glyph,
-   always facing the camera so their shapes stay readable */
-function stackRows(boxes, opt) {
-  const W = Math.max(...boxes.map(b => b.w)), rows = [];
-  const bow = opt.bow || [];
-  for (const line of bow) {
-    const pad = Math.floor((W - line.length) / 2);
-    rows.push(Array.from({ length: W }, (_, i) => { const c = line[i - pad]; return c && c !== ' ' ? ['bow', c] : null; }));
-  }
-  for (const b of boxes) {
-    const pad = Math.floor((W - b.w) / 2), mid = Math.floor(W / 2);
-    for (let r = 0; r < b.h; r++) {
-      const row = new Array(W).fill(null);
-      for (let i = 0; i < b.w; i++) {
-        const x = pad + i, onRib = opt.ribbon && x === mid;
-        let cell;
-        if (onRib) cell = ['rib', '|'];
-        else if (r === 0) cell = ['lid', '='];
-        else if (opt.stitch && (r === 1 || r === b.h - 2) && i > 0 && i < b.w - 1) cell = ['stitch', '-'];
-        else if (opt.stitch && (i === 1 || i === b.w - 2) && r > 0 && r < b.h - 1) cell = ['stitch', ':'];
-        else if (opt.lidBand && r < 2) cell = ['lid', '='];
-        else if (i === 0 || i === b.w - 1) cell = ['side', ':'];
-        else { const h = (x * 37 + rows.length * 91) % 7; cell = ['body', '%#&%x#@'[h]]; }
-        row[x] = cell;
-      }
-      rows.push(row);
-    }
-  }
-  return rows;
-}
-/* a classic gift: bow on top, a lid that overhangs the box, and a ribbon crossing the front */
-function giftRows(w, h) {
-  const mid = Math.floor(w / 2), rows = [];
-  const row = () => new Array(w).fill(null);
-  const bow = row();
-  [['(', -2], ['\\', -1], ['o', 0], ['/', 1], [')', 2]].forEach(([c, d]) => { bow[mid + d] = ['bow', c]; });
-  rows.push(bow);
-  const top = row();
-  for (let i = 0; i < w; i++) top[i] = i === mid ? ['rib', '|'] : ['edge', i === 0 || i === w - 1 ? '.' : '_'];
-  rows.push(top);
-  const lid = row();
-  for (let i = 0; i < w; i++) lid[i] = i === mid ? ['rib', '#'] : i === 0 || i === w - 1 ? ['edge', '['] : ['lid', '='];
-  lid[w - 1] = ['edge', ']'];
-  rows.push(lid);
-  const band = Math.floor(h / 2);
-  for (let r = 0; r < h; r++) {
-    const b = row(), last = r === h - 1;
-    for (let i = 1; i < w - 1; i++) {
-      if (i === mid) b[i] = ['rib', r === band ? '+' : '|'];
-      else if (r === band) b[i] = ['rib', '-'];
-      else if (last) b[i] = ['edge', '_'];
-      else b[i] = ['body', '%#%x%#&'[(i * 5 + r * 3) % 7]];
-    }
-    b[1 - 1] = null; b[1] = ['edge', '|']; b[w - 2] = ['edge', '|'];
-    rows.push(b);
-  }
-  return rows;
-}
-/* colored glyphs only, like the tree */
-const MAT = {
-  sky:    { body: '#8fb9de', edge: '#cfe5f8', lid: '#b9d9f2', rib: '#ffffff', bow: '#ffffff' },
-  white:  { body: '#c9d3dd', edge: '#ffffff', lid: '#eef3f7', rib: '#8fc1ec', bow: '#a9d2f5' },
-  silver: { body: '#aab3be', edge: '#e6ebf0', lid: '#ccd3db', rib: '#c0526a', bow: '#d4687e' },
-  blush:  { body: '#d4a49c', edge: '#f4d8d2', lid: '#e8c1ba', rib: '#fff3df', bow: '#fff3df' },
-};
-const SPRITES = [
-  { x: 0.0, z: 0.6, mat: 'sky', rows: giftRows(13, 4) },
-  { x: 0.52, z: -0.3, mat: 'white', rows: giftRows(11, 3) },
-  { x: -0.56, z: 0.22, mat: 'silver', rows: giftRows(13, 4) },
-  { x: 0.12, z: -0.64, mat: 'blush', rows: giftRows(11, 3) },
-  { x: 0.6, z: 0.14, mat: 'sky', rows: giftRows(9, 3) },
-];
-SPRITES.forEach((sp, i) => { sp.gi = i; });
-giftN = SPRITES.length;
-
-/* rocking horse, light oak, head to the left; w wood, d darker mane/tail, e eye, h handle, s seat, r rocker */
-const HORSE_MAP = [
-  '   dd           ',
-  '  wwdhh         ',
-  ' ewwwd          ',
-  'www  wsssssswd  ',
-  '     ww    ww dd',
-  'r    ww    ww  r',
-  ' rrrrrrrrrrrrrr ',
-];
-const HORSE_MAT = { w: ['', '#d8b27c', '%'], d: ['', '#a77a45', '#'], e: ['', '#3a2412', '@'],
-  h: ['', '#f0d6a6', '='], s: ['', '#ead0a0', '='], r: ['', '#c89a64', '~'] };
-const HORSE = { x: -0.3, z: -0.58 };
+addGift(0.40, -0.30, 0.24, 0.16, 0.2, 0.6, 'toile');
+addGift(-0.42, -0.26, 0.23, 0.09, 0.2, -0.5, 'ticking');
+addGift(-0.42, -0.26, 0.15, 0.08, 0.13, -0.4, 'ticking', 0.09);
+addGift(-0.52, 0.2, 0.17, 0.12, 0.17, 0.3, 'stripe');
+addGift(-0.52, 0.2, 0.13, 0.1, 0.13, 0.5, 'stripe', 0.12);
+addGift(0.1, -0.56, 0.17, 0.12, 0.16, 0.2, 'crinkle');
+addGift(-0.24, 0.68, 0.17, 0.1, 0.14, -0.2, 'velvet');
+addGift(0.64, 0.02, 0.14, 0.1, 0.13, 1.1, 'crinkle');
 
 /* ---------- soft props made of ellipsoid point clouds ---------- */
 function gauss() { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * Math.random()); }
@@ -376,6 +296,7 @@ const horse = [];
 
 const faceOut = (x, z) => Math.atan2(z, x) - Math.PI / 2;
 const props = [
+  { pts: horse, x: 0.58, z: 0.5, yaw: faceOut(0.58, 0.5), rock: { pivot: [0, 0.75], amp: 0.11, sp: 1.7 } },
 ];
 
 /* floor: a ring of ribbon text */
@@ -577,37 +498,7 @@ function frame(now) {
     plot(P.col, P.row, P.depth, g.ch || SHADE_CH[Math.floor(b * 8)], fc, false, pal[Math.max(0, Math.floor(b * 5) - 1)]);
   }
 
-  // pixel-sprite gifts, each dropping from the sky in turn
-  for (const sp of SPRITES) {
-    const off = drop[sp.gi];
-    if (off === null) continue;
-    if (!project(sp.x, FLOOR + off, sp.z)) continue;
-    const H = sp.rows.length, Wd = sp.rows[0].length;
-    const c0 = P.col - Math.floor(Wd / 2), r0 = P.row - H + 1, dep = P.depth > -0.15 ? P.depth + 0.6 : P.depth + 0.05;
-    const M = MAT[sp.mat];
-    for (let r = 0; r < H; r++) for (let i = 0; i < Wd; i++) {
-      const cell = sp.rows[r][i];
-      if (!cell) continue;
-      plot(c0 + i, r0 + r, dep, cell[1], M[cell[0]]);
-    }
-  }
-
-  // pixel-sprite rocking horse, rocking on its curved runners
-  const horseIn = ease((t - GEND + 0.8) / 1.0);
-  if (horseIn > 0 && project(HORSE.x, FLOOR, HORSE.z)) {
-    const slope = reduce ? 0 : Math.sin(tt * 1.7) * 0.07;
-    const Hh = HORSE_MAP.length, Ww = HORSE_MAP[0].length;
-    const pc = P.col - Math.floor(Ww / 2), pr = P.row - Hh + 1 - Math.round((1 - horseIn) * 3);
-    const dep = P.depth > -0.15 ? P.depth + 0.6 : P.depth + 0.05;
-    for (let r = 0; r < Hh; r++) for (let i = 0; i < Ww; i++) {
-      const m = HORSE_MAP[r][i];
-      if (m === ' ') continue;
-      const [fill, ink, glyph] = HORSE_MAT[m];
-      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink);
-    }
-  }
-
-  // rocking horse (old point cloud, unused)
+  // rocking horse
   const propIn = ease((t - GEND + 0.8) / 1.0);
   if (propIn > 0) for (const pr of props) {
     const cY = Math.cos(pr.yaw), sY = Math.sin(pr.yaw);
