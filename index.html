@@ -241,14 +241,74 @@ function addGift(cx, cz, w, h, d, rot, style, y0 = 0) {
   for (let b = -d / 2; b <= d / 2; b += st) for (let y = 0; y <= h; y += st) { put(w / 2, y, b, 1, 0, 0); put(-w / 2, y, b, -1, 0, 0); }
   gifts.push({ gi, x: cx, y: FLOOR + y0 + h + 0.02, z: cz, bowTop: st8.bow, fish: st8.fish, card: st8.card });
 }
-addGift(0.40, -0.30, 0.24, 0.16, 0.2, 0.6, 'toile');
-addGift(-0.42, -0.26, 0.23, 0.09, 0.2, -0.5, 'ticking');
-addGift(-0.42, -0.26, 0.15, 0.08, 0.13, -0.4, 'ticking', 0.09);
-addGift(-0.52, 0.2, 0.17, 0.12, 0.17, 0.3, 'stripe');
-addGift(-0.52, 0.2, 0.13, 0.1, 0.13, 0.5, 'stripe', 0.12);
-addGift(0.1, -0.56, 0.17, 0.12, 0.16, 0.2, 'crinkle');
-addGift(-0.24, 0.68, 0.17, 0.1, 0.14, -0.2, 'velvet');
-addGift(0.64, 0.02, 0.14, 0.1, 0.13, 1.1, 'crinkle');
+
+/* gifts and the rocking horse as pixel sprites: each cell is a solid block with a texture glyph,
+   always facing the camera so their shapes stay readable */
+function stackRows(boxes, opt) {
+  const W = Math.max(...boxes.map(b => b.w)), rows = [];
+  const bow = opt.bow || [];
+  for (const line of bow) {
+    const pad = Math.floor((W - line.length) / 2);
+    rows.push(Array.from({ length: W }, (_, i) => { const c = line[i - pad]; return c && c !== ' ' ? ['bow', c] : null; }));
+  }
+  for (const b of boxes) {
+    const pad = Math.floor((W - b.w) / 2), mid = Math.floor(W / 2);
+    for (let r = 0; r < b.h; r++) {
+      const row = new Array(W).fill(null);
+      for (let i = 0; i < b.w; i++) {
+        const x = pad + i, onRib = opt.ribbon && (x === mid - 1 || x === mid);
+        let cell;
+        if (onRib) cell = ['rib', '|'];
+        else if (r === 0) cell = ['lid', '_'];
+        else if (opt.stitch && (r === 1 || r === b.h - 2) && i > 0 && i < b.w - 1) cell = ['stitch', '-'];
+        else if (opt.stitch && (i === 1 || i === b.w - 2) && r > 0 && r < b.h - 1) cell = ['stitch', ':'];
+        else if (opt.lidBand && r < 2) cell = ['lid', r === 1 ? '_' : ' '];
+        else if (i === 0 || i === b.w - 1) cell = ['side', ' '];
+        else cell = ['body', opt.pattern ? opt.pattern(x, rows.length) : ' '];
+        row[x] = cell;
+      }
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+const BOW_BIG = [' /^^\\ /^^\\ ', '(    >o<    )', ' \\__/ \\__/ ', '   //   \\\\   '];
+const BOW_SMALL = ['/^\\ /^\\', '\\_>o<_/', '  / \\  '];
+const floral = (x, y) => { const h = (x * 73 + y * 151) % 11; return h === 0 ? '*' : h === 4 ? '~' : h === 7 ? ',' : ' '; };
+const MAT = {
+  toile:  { body: ['#e8edf1', '#8aa3c4'], side: ['#d3dbe2', '#8aa3c4'], lid: ['#f4f7f9', '#aebdcc'], rib: ['#8ea6be', '#d8e3ee'], bow: ['#8ea6be', '#e4edf6'], stitch: ['#e8edf1', '#8aa3c4'] },
+  navy:   { body: ['#24467e', '#3a5c96'], side: ['#1c3866', '#3a5c96'], lid: ['#2e5491', '#7f9cc8'], rib: ['#eee5d0', '#a99c80'], bow: ['#eee5d0', '#8a7d62'], stitch: ['#24467e', '#f2f5fb'] },
+  aqua:   { body: ['#9fd8e6', '#c4ecf4'], side: ['#86c3d3', '#c4ecf4'], lid: ['#b9e7f1', '#e6f8fc'], rib: ['#ffffff', '#d6e4ea'], bow: ['#ffffff', '#9bb7c2'], stitch: ['#9fd8e6', '#ffffff'] },
+};
+const SPRITES = [
+  { x: 0.0, z: 0.58, mat: 'toile', rows: stackRows([{ w: 10, h: 3 }, { w: 13, h: 3 }, { w: 16, h: 4 }], { ribbon: true, bow: BOW_BIG, pattern: floral }) },
+  { x: 0.5, z: -0.3, mat: 'navy', rows: stackRows([{ w: 10, h: 3 }, { w: 13, h: 4 }, { w: 16, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
+  { x: -0.56, z: 0.22, mat: 'aqua', rows: stackRows([{ w: 16, h: 5 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
+  { x: -0.38, z: -0.52, mat: 'navy', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_SMALL, stitch: true }) },
+  { x: 0.6, z: 0.12, mat: 'aqua', rows: stackRows([{ w: 11, h: 4 }], { ribbon: true, bow: BOW_SMALL, lidBand: true }) },
+];
+SPRITES.forEach((sp, i) => { sp.gi = i; });
+giftN = SPRITES.length;
+
+/* rocking horse, light oak, head to the left; w wood, d darker mane/tail, e eye, h handle, s seat, r rocker */
+const HORSE_MAP = [
+  '      ddd                     ',
+  '     wwwdd                    ',
+  '    wwwwwdhhhh                ',
+  '   wewwwwwdd                  ',
+  '  wwwwwwwwwd                  ',
+  '  www   wwwwd             dd  ',
+  '         wwwssssssssssswwwddd ',
+  '         wwwwwwwwwwwwwwwww dd ',
+  '         wwww         wwww    ',
+  ' r       wwww         wwww   r',
+  ' rr      wwww         wwww  rr',
+  '  rrrrrrrrrrrrrrrrrrrrrrrrrrr ',
+  '     rrrrrrrrrrrrrrrrrrrrr    ',
+];
+const HORSE_MAT = { w: ['#c99c64', '#e2bd85', '='], d: ['#8c6034', '#b5874f', '/'], e: ['#24160a', '#000000', '@'],
+  h: ['#e4c48e', '#f6e2b8', '='], s: ['#dcb47c', '#f2d7a6', '_'], r: ['#b98b58', '#dfb985', '-'] };
+const HORSE = { x: -0.3, z: -0.58 };
 
 /* ---------- soft props made of ellipsoid point clouds ---------- */
 function gauss() { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * Math.random()); }
@@ -295,7 +355,6 @@ const horse = [];
 
 const faceOut = (x, z) => Math.atan2(z, x) - Math.PI / 2;
 const props = [
-  { pts: horse, x: 0.58, z: 0.5, yaw: faceOut(0.58, 0.5), rock: { pivot: [0, 0.75], amp: 0.11, sp: 1.7 } },
 ];
 
 /* floor: a ring of ribbon text */
@@ -497,7 +556,38 @@ function frame(now) {
     plot(P.col, P.row, P.depth, g.ch || SHADE_CH[Math.floor(b * 8)], fc, false, pal[Math.max(0, Math.floor(b * 5) - 1)]);
   }
 
-  // rocking horse
+  // pixel-sprite gifts, each dropping from the sky in turn
+  for (const sp of SPRITES) {
+    const off = drop[sp.gi];
+    if (off === null) continue;
+    if (!project(sp.x, FLOOR + off, sp.z)) continue;
+    const H = sp.rows.length, Wd = sp.rows[0].length;
+    const c0 = P.col - Math.floor(Wd / 2), r0 = P.row - H + 1, dep = P.depth > -0.15 ? P.depth + 0.6 : P.depth + 0.05;
+    const M = MAT[sp.mat];
+    for (let r = 0; r < H; r++) for (let i = 0; i < Wd; i++) {
+      const cell = sp.rows[r][i];
+      if (!cell) continue;
+      const [fill, ink] = M[cell[0]];
+      plot(c0 + i, r0 + r, dep, cell[1], ink, false, '!' + fill);
+    }
+  }
+
+  // pixel-sprite rocking horse, rocking on its curved runners
+  const horseIn = ease((t - GEND + 0.8) / 1.0);
+  if (horseIn > 0 && project(HORSE.x, FLOOR, HORSE.z)) {
+    const slope = reduce ? 0 : Math.sin(tt * 1.7) * 0.07;
+    const Hh = HORSE_MAP.length, Ww = HORSE_MAP[0].length;
+    const pc = P.col - Math.floor(Ww / 2), pr = P.row - Hh + 1 - Math.round((1 - horseIn) * 3);
+    const dep = P.depth > -0.15 ? P.depth + 0.6 : P.depth + 0.05;
+    for (let r = 0; r < Hh; r++) for (let i = 0; i < Ww; i++) {
+      const m = HORSE_MAP[r][i];
+      if (m === ' ') continue;
+      const [fill, ink, glyph] = HORSE_MAT[m];
+      plot(pc + i, pr + r + Math.round(slope * (i - Ww / 2)), dep, glyph, ink, false, '!' + fill);
+    }
+  }
+
+  // rocking horse (old point cloud, unused)
   const propIn = ease((t - GEND + 0.8) / 1.0);
   if (propIn > 0) for (const pr of props) {
     const cY = Math.cos(pr.yaw), sY = Math.sin(pr.yaw);
@@ -581,7 +671,7 @@ function frame(now) {
     const u = clamp(t / FLAKE_T, 0, 1);
     const fy = -AVAIL * 0.2 + (landY + AVAIL * 0.2) * (u * u * (3 - 2 * u));
     const fx = landX + Math.sin(t * 1.3) * W * 0.04 * (1 - u);
-    const Lp = AVAIL * 0.11 * (1 - 0.7 * u * u);
+    const Lp = AVAIL * 0.065 * (1 - 0.6 * u * u);
     const fade = t < FLAKE_T ? 1 : 1 - (t - FLAKE_T) / 0.6;
     const rot = t * 0.5;
     const segs = [];
@@ -619,29 +709,8 @@ function frame(now) {
     const pulse = Math.min(1, 0.75 + 0.25 * Math.sin(tt * 2.2) + jing);
     const gold = `rgba(255,226,160,${(starIn * pulse).toFixed(2)})`;
     const pale = `rgba(255,240,205,${starIn.toFixed(2)})`;
-    const sx = P.px, sy = P.py - ch * 1.2;
-    starPx = [sx, sy];
-    const R = Math.max(ch * 3, scale * 0.09) * (0.6 + 0.4 * starIn) * (1 + 0.04 * Math.sin(tt * 2.2)), r0 = R * 0.46;
-    const verts = [];
-    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r0 : R; verts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
-    const inside = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = verts[i], [xj, yj] = verts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
-    // diagonal light rays behind the star
-    for (const a of [-0.62, -2.52, 0.62, 2.52]) {
-      const c = Math.abs(Math.cos(a) * Math.sin(a)) > 0 && Math.cos(a) * Math.sin(a) > 0 ? '\\' : '/';
-      for (let d = R * 0.9; d < R * 2.1; d += cw * 0.8) {
-        const al = (1 - (d - R * 0.9) / (R * 1.2)) * 0.75 * starIn * pulse;
-        plot(Math.floor((sx + Math.cos(a) * d) / cw), Math.floor((sy + Math.sin(a) * d) / ch), 8.9, c, `rgba(255,214,130,${al.toFixed(2)})`, true);
-      }
-    }
-    const c0c = Math.floor((sx - R) / cw), c1c = Math.floor((sx + R) / cw), r0r = Math.floor((sy - R) / ch), r1r = Math.floor((sy + R) / ch);
-    for (let rr = r0r; rr <= r1r; rr++) for (let cc = c0c; cc <= c1c; cc++) {
-      const x = (cc + 0.5) * cw - sx, y = (rr + 0.5) * ch - sy;
-      if (!inside(x, y)) continue;
-      const d = Math.hypot(x, y) / R;
-      const ch2 = d < 0.28 ? '@' : d < 0.55 ? '@' : d < 0.8 ? '#' : '*';
-      const color = d < 0.28 ? pale : d < 0.55 ? `rgba(255,222,140,${starIn.toFixed(2)})` : gold;
-      plot(cc, rr, 9, ch2, color, true, d < 0.55 ? '#c8902a' : '#8a5f18');
-    }
+    const sx = P.px, sy = P.py - ch * 0.9;
+    starPx = [sx, sy, Math.max(ch * 2.6, scale * 0.085) * (0.6 + 0.4 * starIn), starIn];
   }
 
   /* ---- paint ---- */
@@ -669,16 +738,8 @@ function frame(now) {
     ctx.drawImage(spr, discs[i] - bs / 3, discs[i + 1] - bs / 3, bs / 1.5, bs / 1.5);
   }
   if (starPx) {
-    ctx.globalAlpha = Math.min(1, 0.9 * starIn);
-    const s = cw * 26; ctx.drawImage(glow, starPx[0] - s / 2, starPx[1] - s / 2, s, s);
-    // thin cross flare
-    const fl = (0.55 + 0.25 * Math.sin(tt * 1.7)) * starIn;
-    for (const [dx, dy, len] of [[1, 0, cw * 26], [0, 1, ch * 7.5]]) {
-      const g = ctx.createLinearGradient(starPx[0] - dx * len, starPx[1] - dy * len, starPx[0] + dx * len, starPx[1] + dy * len);
-      g.addColorStop(0, 'rgba(255,210,120,0)'); g.addColorStop(0.5, `rgba(255,236,190,${fl.toFixed(2)})`); g.addColorStop(1, 'rgba(255,210,120,0)');
-      ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(starPx[0] - dx * len, starPx[1] - dy * len); ctx.lineTo(starPx[0] + dx * len, starPx[1] + dy * len); ctx.stroke();
-    }
+    ctx.globalAlpha = 0.55 * starIn;
+    const s = starPx[2] * 5; ctx.drawImage(glow, starPx[0] - s / 2, starPx[1] - s / 2, s, s);
   }
   if (flake) {
     ctx.globalAlpha = 0.5 * flake[3]; const s = flake[2] * 2.6;
@@ -719,6 +780,27 @@ function frame(now) {
     ctx.font = b ? bold : thin;
     ctx.fillStyle = b ? key.slice(0, -2) : key;
     for (const i of arr) ctx.fillText(cb[i], (i % cols) * cw, Math.floor(i / cols) * ch);
+  }
+
+  // star: square gold pixels, each arm split into a light and a dark half like an embroidered patch
+  if (starPx) {
+    const [sx, sy, R, sIn] = starPx, r0 = R * 0.42, q = Math.max(2, Math.round(R / 10));
+    const verts = [];
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r0 : R; verts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+    const inside = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = verts[i], [xj, yj] = verts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+    const n = Math.ceil(R / q) + 1, sh = 0.08 * Math.sin(tt * 2);
+    ctx.globalAlpha = sIn;
+    for (let gy = -n; gy <= n; gy++) for (let gx = -n; gx <= n; gx++) {
+      const x = (gx + 0.5) * q, y = (gy + 0.5) * q;
+      if (!inside(x, y)) continue;
+      const edge = !inside(x + q, y) || !inside(x - q, y) || !inside(x, y + q) || !inside(x, y - q);
+      let phi = Math.atan2(y, x) + Math.PI / 2;
+      const k = Math.round(phi / (TAU / 5)), d = phi - k * TAU / 5;
+      const light = d < 0;
+      ctx.fillStyle = edge ? '#b47a12' : light ? (sh > 0.04 ? '#fff1a8' : '#ffe27a') : '#e8a925';
+      ctx.fillRect(Math.round(sx + gx * q), Math.round(sy + gy * q), q, q);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // fireworks
@@ -799,7 +881,7 @@ function launch() {
   }
 }
 function burst(r) {
-  const heart = Math.random() < 0.12;
+  const heart = false;
   const n = heart ? 60 : Math.round(rnd(90, 130)), sp = rnd(150, 210) * Math.sqrt(AVAIL / 600);
   for (let i = 0; i < n; i++) {
     let vx, vy;
